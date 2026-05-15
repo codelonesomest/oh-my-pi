@@ -29,6 +29,10 @@ log = logging.getLogger(__name__)
 AUTH_ENV_VAR = "ROBOMP_GIT_HTTP_AUTH"
 
 _CRED_URL = re.compile(r"(https?://)([^:/@\s]+):([^@/\s]+)@")
+_BAD_OBJECT_REF_RE = re.compile(
+    r"(?:fatal: bad object (?P<bad>refs/[^\s]+)|error: (?P<invalid>refs/[^\s]+) does not point to a valid object!)"
+)
+_FETCH_PRUNE_REPAIR_ATTEMPTS = 8
 
 
 def redact_credentials(text: str | None) -> str:
@@ -137,6 +141,120 @@ def _check(proc: subprocess.CompletedProcess[str], cmd: list[str]) -> subprocess
     return proc
 
 
+def _git_dir(repo_dir: Path) -> Path | None:
+    dot_git = repo_dir / ".git"
+    if dot_git.is_dir():
+        return dot_git
+    if dot_git.is_file():
+        try:
+            text = dot_git.read_text(encoding="utf-8").strip()
+        except OSError:
+            return None
+        prefix = "gitdir:"
+        if not text.startswith(prefix):
+            return None
+        git_dir = Path(text[len(prefix) :].strip())
+        return git_dir if git_dir.is_absolute() else (repo_dir / git_dir).resolve()
+    if (repo_dir / "HEAD").exists() and (repo_dir / "objects").is_dir():
+        return repo_dir
+    return None
+
+
+def _resolve_alternate_path(objects_dir: Path, raw: str) -> Path:
+    path = Path(raw)
+    if path.is_absolute():
+        return path
+    return (objects_dir / path).resolve()
+
+
+def _prune_missing_alternates(repo_dir: Path) -> bool:
+    """Drop object alternates that point at directories no longer mounted.
+
+    The bot never configures alternates for pool clones. If one leaks in from
+    an external git invocation and points at a temp directory, every later
+    fetch emits warnings and refs whose objects lived only there become
+    unreadable. Removing the dead alternate lets the repair path below delete
+    those broken refs and recover the pool without recloning it.
+    """
+    git_dir = _git_dir(repo_dir)
+    if git_dir is None:
+        return False
+    objects_dir = git_dir / "objects"
+    alternates = objects_dir / "info" / "alternates"
+    try:
+        lines = alternates.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError):
+        return False
+
+    kept: list[str] = []
+    changed = False
+    for line in lines:
+        raw = line.strip()
+        if not raw:
+            changed = True
+            continue
+        if _resolve_alternate_path(objects_dir, raw).is_dir():
+            kept.append(line)
+        else:
+            changed = True
+
+    if not changed:
+        return False
+    try:
+        if kept:
+            alternates.write_text("\n".join(kept) + "\n", encoding="utf-8")
+        else:
+            alternates.unlink()
+    except OSError as exc:
+        log.warning("failed to prune missing git alternates", extra={"repo_dir": str(repo_dir), "error": str(exc)})
+        return False
+    log.warning("pruned missing git alternates", extra={"repo_dir": str(repo_dir)})
+    return True
+
+
+def _is_safe_ref_name(ref: str) -> bool:
+    if not ref.startswith("refs/"):
+        return False
+    if any(ch in ref for ch in "\0\r\n\t "):
+        return False
+    return all(part not in ("", ".", "..") for part in ref.split("/"))
+
+
+def _bad_refs_from_fetch_output(output: str) -> tuple[str, ...]:
+    refs: list[str] = []
+    seen: set[str] = set()
+    for match in _BAD_OBJECT_REF_RE.finditer(output):
+        ref = match.group("bad") or match.group("invalid") or ""
+        if ref in seen or not _is_safe_ref_name(ref):
+            continue
+        seen.add(ref)
+        refs.append(ref)
+    return tuple(refs)
+
+
+def _delete_bad_refs(repo_dir: Path, output: str) -> bool:
+    changed = False
+    for ref in _bad_refs_from_fetch_output(output):
+        proc = _run_git(["update-ref", "-d", ref], cwd=repo_dir, token=None)
+        if proc.returncode == 0:
+            changed = True
+            log.warning(
+                "deleted invalid git ref during fetch repair", extra={"repo_dir": str(repo_dir), "git_ref": ref}
+            )
+            continue
+        log.warning(
+            "failed to delete invalid git ref during fetch repair",
+            extra={"repo_dir": str(repo_dir), "git_ref": ref, "stderr": proc.stderr[:500]},
+        )
+    return changed
+
+
+def _repair_fetch_prune_failure(repo_dir: Path, output: str) -> bool:
+    pruned_alternates = _prune_missing_alternates(repo_dir)
+    deleted_refs = _delete_bad_refs(repo_dir, output)
+    return pruned_alternates or deleted_refs
+
+
 # ---------- Public primitives ----------
 
 
@@ -162,9 +280,28 @@ def clone(
 
 
 def fetch_prune(repo_dir: Path, *, token: str | None) -> None:
-    """`git fetch --prune origin` on the shared pool clone."""
+    """`git fetch --prune origin` on the shared pool clone.
+
+    Pool clones are long-lived. If a transient git object alternate leaks into
+    the pool and later disappears, `git fetch` can fail before it has a chance
+    to refresh from origin because a local ref points at an object that only
+    existed in that missing alternate. Repair that exact corruption in-place:
+    drop dead alternates, delete refs Git already reported as invalid, then
+    retry the fetch.
+    """
     args = ["fetch", "--prune", "origin"]
-    _check(_run_git(args, cwd=repo_dir, token=token), ["git", *args])
+    _prune_missing_alternates(repo_dir)
+    last_proc: subprocess.CompletedProcess[str] | None = None
+    for _ in range(_FETCH_PRUNE_REPAIR_ATTEMPTS):
+        proc = _run_git(args, cwd=repo_dir, token=token)
+        if proc.returncode == 0:
+            return
+        last_proc = proc
+        output = f"{proc.stderr}\n{proc.stdout}"
+        if not _repair_fetch_prune_failure(repo_dir, output):
+            _check(proc, ["git", *args])
+    assert last_proc is not None
+    _check(last_proc, ["git", *args])
 
 
 def fetch_ref(repo_dir: Path, ref: str, *, token: str | None) -> None:

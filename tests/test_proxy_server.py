@@ -603,6 +603,33 @@ async def test_git_clone_creates_pool_dir(proxy_settings: Settings, upstream_rep
     assert (pool_dir / "HEAD").exists() or (pool_dir / ".git" / "HEAD").exists()
 
 
+async def test_git_fetch_repairs_missing_alternate_and_bad_ref(proxy_settings: Settings, upstream_repo: Path) -> None:
+    pool_dir = Path(proxy_settings.workspace_root) / "_pool" / "octo__widget"
+    pool_dir.parent.mkdir(parents=True, exist_ok=True)
+    _git(["clone", "--filter=blob:none", str(upstream_repo), str(pool_dir)], Path(proxy_settings.workspace_root))
+
+    bad_ref = pool_dir / ".git" / "refs" / "heads" / "farm" / "bad"
+    bad_ref.parent.mkdir(parents=True, exist_ok=True)
+    bad_ref.write_text("0123456789012345678901234567890123456789\n", encoding="ascii")
+
+    alternates = pool_dir / ".git" / "objects" / "info" / "alternates"
+    alternates.write_text(str(Path(proxy_settings.workspace_root) / "missing-objects") + "\n", encoding="utf-8")
+
+    app = _build_app(proxy_settings)
+    body = b'{"repo":"octo/widget"}'
+    async with await _async_client(app) as client:
+        resp = await client.post(
+            "/gh/v1/git/fetch",
+            content=body,
+            headers={**_signed("POST", "/gh/v1/git/fetch", body), "Content-Type": "application/json"},
+        )
+
+    assert resp.status_code == 200, resp.text
+    assert Path(resp.json()["pool_dir"]) == pool_dir
+    assert not bad_ref.exists()
+    assert not alternates.exists()
+
+
 async def test_git_push_happy_path(proxy_settings: Settings, upstream_repo: Path) -> None:
     branch = "farm/abc/feature"
     _, head = _stage_workspace(proxy_settings, upstream_repo, "octo/widget", 1, branch)

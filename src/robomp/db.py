@@ -519,6 +519,13 @@ class Database:
                 (classification, _utcnow(), key),
             )
 
+    def set_issue_branch(self, key: str, branch: str) -> None:
+        with self._lock:
+            self._conn.execute(
+                "UPDATE issues SET branch=?, updated_at=? WHERE key=?",
+                (branch, _utcnow(), key),
+            )
+
     def get_issue(self, key: str) -> IssueRow | None:
         with self._lock:
             row = self._conn.execute(

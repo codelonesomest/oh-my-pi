@@ -167,7 +167,7 @@ fix:
 [group('dev')]
 [doc('run robomp serve on the host (skips docker)')]
 serve:
-    python -m robomp serve
+    python3 -m robomp serve
 
 # ───────── inspection (HTTP) ─────────
 
@@ -184,12 +184,12 @@ readyz:
 [group('inspect')]
 [doc('GET /events?limit=N — recent webhook deliveries (default 50)')]
 events LIMIT='50':
-    curl -fsS 'http://localhost:{{PORT}}/events?limit={{LIMIT}}' | python -m json.tool
+    curl -fsS 'http://localhost:{{PORT}}/events?limit={{LIMIT}}' | python3 -m json.tool
 
 [group('inspect')]
 [doc('GET /issues?limit=N — per-issue state (default 100)')]
 issues LIMIT='100':
-    curl -fsS 'http://localhost:{{PORT}}/issues?limit={{LIMIT}}' | python -m json.tool
+    curl -fsS 'http://localhost:{{PORT}}/issues?limit={{LIMIT}}' | python3 -m json.tool
 
 # ───────── inspection (sqlite) ─────────
 
