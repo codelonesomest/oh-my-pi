@@ -247,6 +247,29 @@ describe("extensions discovery", () => {
 		expect(result.extensions[0].path).toContain("index.ts");
 	});
 
+	it("ignores package.json with only legacy omp field, falls back to index.ts", async () => {
+		const subdir = path.join(extensionsDir, "my-package");
+		fs.mkdirSync(subdir);
+		fs.writeFileSync(path.join(subdir, "index.ts"), extensionCode);
+		fs.writeFileSync(
+			path.join(subdir, "package.json"),
+			JSON.stringify({
+				name: "my-package",
+				omp: {
+					extensions: ["./custom.ts"],
+				},
+			}),
+		);
+		fs.writeFileSync(path.join(subdir, "custom.ts"), extensionCodeWithTool("from-legacy-omp"));
+
+		const result = await discoverForTest();
+
+		expect(result.errors).toHaveLength(0);
+		expect(result.extensions).toHaveLength(1);
+		expect(result.extensions[0].path).toContain("index.ts");
+		expect(result.extensions[0].tools.has("from-legacy-omp")).toBe(false);
+	});
+
 	it("ignores subdirectory without index or package.json", async () => {
 		const subdir = path.join(extensionsDir, "not-an-extension");
 		fs.mkdirSync(subdir);
@@ -319,7 +342,7 @@ describe("extensions discovery", () => {
 		fs.writeFileSync(path.join(realDir, "index.ts"), extensionCodeWithTool("ctk-tool"));
 		fs.writeFileSync(
 			path.join(realDir, "package.json"),
-			JSON.stringify({ name: "ctk", omp: { extensions: ["./index.ts"] } }),
+			JSON.stringify({ name: "ctk", pi: { extensions: ["./index.ts"] } }),
 		);
 		fs.symlinkSync(realDir, path.join(extensionsDir, "ctk"), "dir");
 
@@ -464,7 +487,7 @@ describe("extensions discovery", () => {
 				name: "pi-extension-with-deps",
 				version: "1.0.0",
 				type: "module",
-				omp: { extensions: ["./index.ts"] },
+				pi: { extensions: ["./index.ts"] },
 			}),
 		);
 

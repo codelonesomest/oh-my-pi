@@ -236,20 +236,16 @@ export async function runCli(argv: string[]): Promise<void> {
 		if (extracted.profile !== undefined) {
 			setProfile(extracted.profile);
 		} else {
-			// No explicit --profile: activate any OMP_PROFILE/PI_PROFILE inherited
-			// from the environment. Module-load resolution deliberately swallows an
-			// invalid value to avoid an uncaught throw before this try/catch is in
-			// scope (see `readProfileFromEnvSafe` in dirs.ts), and callers may set
-			// OMP_PROFILE after importing this module (profile aliases/tests). Surfacing
-			// validation here turns `OMP_PROFILE=.. omp --version` into a clean error;
-			// calling setProfile keeps every later path helper on the env-selected
-			// profile instead of the default agent directory.
-			setProfile(resolveProfileEnv(process.env.OMP_PROFILE, process.env.PI_PROFILE));
+			// No explicit --profile: activate any inherited PI_PROFILE from the
+			// environment. Module-load resolution deliberately swallows an invalid
+			// value to avoid an uncaught throw before this try/catch is in scope
+			// (see `readProfileFromEnvSafe` in dirs.ts).
+			setProfile(resolveProfileEnv(process.env.PI_PROFILE));
 		}
 		if (extracted.aliasName !== undefined) {
 			const profile = extracted.profile ?? getActiveProfile();
 			if (!profile) {
-				throw new Error("--alias requires --profile <name> or OMP_PROFILE");
+				throw new Error("--alias requires --profile <name> or PI_PROFILE");
 			}
 			const result = await installProfileAlias({
 				profile,
@@ -263,51 +259,51 @@ export async function runCli(argv: string[]): Promise<void> {
 			);
 			return;
 		}
+
+		// Worker-thread entry dispatch must run before the first `await`: the
+		// stats sync worker's buffering onmessage handler is installed in the
+		// synchronous prefix of `runWorkerEntrypoint`, and Bun flushes the
+		// worker's parked initial messages as soon as the entry module's
+		// top-level evaluation finishes.
+		if (resolvedArgv[0]?.startsWith("__omp_worker_")) {
+			await runWorkerEntrypoint(resolvedArgv[0]);
+			return;
+		}
+
+		// Declare this module as the worker-host entry now that the active profile
+		// is resolved. The worker-host module is side-effect-free; importing
+		// `@oh-my-pi/pi-utils/env` here would snapshot the wrong agent `.env`.
+		// Gated on `import.meta.main`: only the real CLI process entry is a valid
+		// worker host. Worker-thread re-entry already returned above at the
+		// `__omp_worker_` dispatch, and importers (`runCli` in profile-CLI tests,
+		// SDK embedding) have `import.meta.main === false` — declaring there would
+		// poison `workerHostEntry()` for the whole test process, forcing eval/stats/
+		// browser workers onto the same-realm inline fallback.
+		if (import.meta.main) declareWorkerHostEntry();
+
+		if (resolvedArgv[0] === "--smoke-test") {
+			await runSmokeTest();
+			return;
+		}
+		const [{ run }, { commands, resolveCliArgv }] = await Promise.all([
+			import("@oh-my-pi/pi-utils/cli"),
+			import("./cli-commands"),
+		]);
+		// --help and --version are handled by run() directly, don't rewrite those.
+		// Everything else that isn't a known subcommand routes to "launch".
+		const resolved = resolveCliArgv(resolvedArgv);
+		if ("error" in resolved) {
+			process.stderr.write(`error: ${resolved.error}\n`);
+			process.exitCode = 1;
+			return;
+		}
+		return run({ bin: APP_NAME, version: VERSION, argv: resolved.argv, commands, help: showHelp });
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		process.stderr.write(`Error: ${message}\n`);
 		process.exitCode = 1;
 		return;
 	}
-
-	// Worker-thread entry dispatch must run before the first `await`: the
-	// stats sync worker's buffering onmessage handler is installed in the
-	// synchronous prefix of `runWorkerEntrypoint`, and Bun flushes the
-	// worker's parked initial messages as soon as the entry module's
-	// top-level evaluation finishes.
-	if (resolvedArgv[0]?.startsWith("__omp_worker_")) {
-		await runWorkerEntrypoint(resolvedArgv[0]);
-		return;
-	}
-
-	// Declare this module as the worker-host entry now that the active profile
-	// is resolved. The worker-host module is side-effect-free; importing
-	// `@oh-my-pi/pi-utils/env` here would snapshot the wrong agent `.env`.
-	// Gated on `import.meta.main`: only the real CLI process entry is a valid
-	// worker host. Worker-thread re-entry already returned above at the
-	// `__omp_worker_` dispatch, and importers (`runCli` in profile-CLI tests,
-	// SDK embedding) have `import.meta.main === false` — declaring there would
-	// poison `workerHostEntry()` for the whole test process, forcing eval/stats/
-	// browser workers onto the same-realm inline fallback.
-	if (import.meta.main) declareWorkerHostEntry();
-
-	if (resolvedArgv[0] === "--smoke-test") {
-		await runSmokeTest();
-		return;
-	}
-	const [{ run }, { commands, resolveCliArgv }] = await Promise.all([
-		import("@oh-my-pi/pi-utils/cli"),
-		import("./cli-commands"),
-	]);
-	// --help and --version are handled by run() directly, don't rewrite those.
-	// Everything else that isn't a known subcommand routes to "launch".
-	const resolved = resolveCliArgv(resolvedArgv);
-	if ("error" in resolved) {
-		process.stderr.write(`error: ${resolved.error}\n`);
-		process.exitCode = 1;
-		return;
-	}
-	return run({ bin: APP_NAME, version: VERSION, argv: resolved.argv, commands, help: showHelp });
 }
 
 // Floating call instead of top-level await: TLA forces `--bytecode` (CJS
