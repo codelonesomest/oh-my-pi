@@ -272,7 +272,7 @@ runs:
            tool: cargo-xwin
       - name: Cache cargo-xwin Windows SDK
         if: endsWith(steps.resolve.outputs.cross_target, '-msvc')
-        uses: actions/cache@v4
+        uses: actions/cache@v6.1.0
         with:
            path: ~/.cache/cargo-xwin
            key: cargo-xwin-${{ runner.os }}-v1
@@ -303,7 +303,7 @@ runs:
            TARGET_VARIANTS: ${{ inputs.variant }}
         run: bun run ci:build:native
       - name: Upload native addon(s)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
            name: pi-natives-${{ inputs.platform }}-${{ inputs.arch }}${{ inputs.variant && format('-{0}', inputs.variant) || '' }}-h${{ inputs.hash }}
            path: packages/natives/native/pi_natives.${{ inputs.platform }}-${{ inputs.arch }}*.node
