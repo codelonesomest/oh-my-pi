@@ -123,7 +123,7 @@ function rows(prefix: string, count: number): string[] {
 }
 
 describe("streaming scrollback defer", () => {
-let savedTerminalEnv: Record<string, string | undefined> = {};
+	let savedTerminalEnv: Record<string, string | undefined> = {};
 	const DIRECT_TERMINAL_ENV_KEYS = [
 		"TERM_PROGRAM",
 		"PI_TUI_RESIZE_IN_PLACE",

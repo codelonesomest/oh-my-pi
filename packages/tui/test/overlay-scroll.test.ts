@@ -36,6 +36,7 @@ class MutableContentComponent implements Component {
 		return [...this.#lines];
 	}
 }
+
 class WidthAwareHistoryComponent implements Component {
 	invalidate(): void {
 		// No cached state
@@ -90,6 +91,7 @@ function longestBlankRun(lines: string[]): number {
 	}
 	return longest;
 }
+
 async function withEnv(name: string, value: string, run: () => Promise<void>): Promise<void> {
 	const previous = Bun.env[name];
 	Bun.env[name] = value;
@@ -120,13 +122,13 @@ async function settleResize(term: VirtualTerminal): Promise<void> {
 }
 
 describe("TUI overlays", () => {
-let savedTerminalEnv: Record<string, string | undefined> = {};
-const DIRECT_TERMINAL_ENV_KEYS = [
-	"TERM_PROGRAM",
-	"PI_TUI_RESIZE_IN_PLACE",
-	"CMUX_WORKSPACE_ID",
-	"CMUX_SURFACE_ID",
-] as const;
+	let savedTerminalEnv: Record<string, string | undefined> = {};
+	const DIRECT_TERMINAL_ENV_KEYS = [
+		"TERM_PROGRAM",
+		"PI_TUI_RESIZE_IN_PLACE",
+		"CMUX_WORKSPACE_ID",
+		"CMUX_SURFACE_ID",
+	] as const;
 	beforeEach(() => {
 		// A resize on Warp takes the in-place path (no ED3), and cmux surface/workspace
 		// ids mark a multiplexer session, so neutralize the ambient terminal identity

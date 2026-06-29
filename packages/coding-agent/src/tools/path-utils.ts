@@ -54,20 +54,20 @@ const OPAQUE_RESOURCE_SCHEMES: ReadonlySet<string> = new Set(["mcp"]);
 const INTERNAL_URL_SCHEME_RE = /^([a-z][a-z0-9+.-]*):\/\//i;
 const NARROW_NO_BREAK_SPACE = "\u202F";
 const TOP_LEVEL_INTERNAL_URL_PREFIXES = [
-		"agent://",
-		"artifact://",
-		"history://",
-		"issue://",
-		"local://",
-		"mcp://",
-		"memory://",
-		"pi://",
-		"pr://",
-		"rule://",
-		"skill://",
-		"ssh://",
-		"vault://",
-	] as const;
+	"agent://",
+	"artifact://",
+	"history://",
+	"issue://",
+	"local://",
+	"mcp://",
+	"memory://",
+	"pi://",
+	"pr://",
+	"rule://",
+	"skill://",
+	"ssh://",
+	"vault://",
+] as const;
 
 function normalizeUnicodeSpaces(str: string): string {
 	return str.replace(UNICODE_SPACES, " ");
@@ -202,7 +202,10 @@ export interface LineRange {
 
 const LINE_RANGE_CHUNK_RE = /^L?(\d+)(?:(\.\.|[-+])L?(\d+)?)?$/i;
 
-/** Parse a single `N`, `N-M`, `N-`, `N+K`, or `..`-aliased (`N..M`, `N..`) chunk. Throws via {@link ToolError} on invalid bounds. */
+/**
+ * Parse a single `N`, `N-M`, `N-`, `N+K`, or `..`-aliased (`N..M`, `N..`) chunk.
+ * Throws via {@link ToolError} on invalid bounds.
+ */
 export function parseLineRangeChunk(sel: string): LineRange | null {
 	const lineMatch = LINE_RANGE_CHUNK_RE.exec(sel);
 	if (!lineMatch) return null;
@@ -498,6 +501,7 @@ export function formatPathRelativeToCwd(
 export function stripOuterDoubleQuotes(input: string): string {
 	return input.startsWith('"') && input.endsWith('"') && input.length > 1 ? input.slice(1, -1) : input;
 }
+
 function normalizePathSeparators(input: string): string {
 	if (isInternalUrlPath(input)) return input;
 	if (!input.includes("\\")) return input;

@@ -191,7 +191,7 @@ async function withEnvPatch<T>(patch: Record<string, string | undefined>, run: (
 
 describe("TUI terminal-state regressions", () => {
 	let monotonicNow = 0;
-let savedTerminalEnv: Record<string, string | undefined> = {};
+	let savedTerminalEnv: Record<string, string | undefined> = {};
 	const DIRECT_TERMINAL_ENV_KEYS = [
 		"TERM_PROGRAM",
 		"PI_TUI_RESIZE_IN_PLACE",
@@ -4153,7 +4153,6 @@ describe("foreground-tool streaming on ED3-risk terminals", () => {
 		savedTerminalEnv = {};
 		vi.restoreAllMocks();
 	});
-
 
 	// Repro of the "injected notification chip renders over the active tool
 	// render" report. A foreground tool streams while its header (carrying a
