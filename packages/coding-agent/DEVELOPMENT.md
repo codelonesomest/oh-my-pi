@@ -1,6 +1,6 @@
 # Developing `@oh-my-pi/pi-coding-agent`
 
-This package is the `omp` CLI. This file is a **developer's map**: where things live
+This package is the `pi` CLI. This file is a **developer's map**: where things live
 in `src/`, how to run the local loops, and — for each subsystem — which document in
 the repo [`docs/`](../../docs/) tree is the authoritative reference.
 
@@ -22,7 +22,7 @@ Run from `packages/coding-agent/` (or add `--cwd=packages/coding-agent`):
 | Autofix: lint + format prompts + docs index | `bun run fix` |
 | Reformat prompt `.md` assets | `bun run format-prompts` |
 | Regenerate the `docs://` index | `bun run gen:docs` |
-| Build the `dist/omp` binary | `bun run build` |
+| Build the `dist/pi` binary | `bun run build` |
 
 Never invoke `tsc`/`npx tsc` directly — `bun run check` is the typecheck gate. After
 changing the React tool renderers under `collab-web/src/tool-render/`, rebuild them
@@ -149,7 +149,7 @@ Top-level entry modules: `cli.ts`, `main.ts`, `sdk.ts`, `index.ts` (SDK barrel),
 - [macos-signing-notarization.md](../../docs/macos-signing-notarization.md)
 - [porting-from-pi-mono.md](../../docs/porting-from-pi-mono.md)
 
-## Extending omp
+## Extending pi
 
 | To add… | Start here |
 |---|---|

@@ -44,7 +44,7 @@ export type { StopDetails } from "./providers/anthropic-wire";
 export type { AssistantMessageEventStream } from "./utils/event-stream";
 
 /**
- * Ceiling on the output-token count omp requests from any OpenAI-family endpoint
+ * Ceiling on the output-token count pi requests from any OpenAI-family endpoint
  * (openai-responses, azure/xai responses, and openai-completions). Mirrors
  * Anthropic's {@link CLAUDE_CODE_MAX_OUTPUT_TOKENS}.
  *

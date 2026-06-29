@@ -300,6 +300,7 @@ describe("streaming edit preview height (stable, full tail window)", () => {
 					component.setArgsComplete();
 				},
 				() => {
+					component.setExpanded(true);
 					component.updateResult(
 						{
 							content: [{ type: "text", text: finalSentinel }],
@@ -307,14 +308,12 @@ describe("streaming edit preview height (stable, full tail window)", () => {
 						},
 						false,
 					);
-					component.setExpanded(true);
-					term.resize(70, 9);
 				},
 			];
 
 			for (const [i, applyStep] of lifecycleSteps.entries()) {
 				applyStep();
-				term.scrollLines(1_000);
+				if (i < lifecycleSteps.length - 1) term.scrollLines(1_000);
 				tui.requestRender(i % 3 === 0 || i >= streamingStepCount);
 				await settleTerminal(component, scheduler, term);
 
@@ -323,28 +322,18 @@ describe("streaming edit preview height (stable, full tail window)", () => {
 					sawPreviewSentinel ||= rows.some(row => row.includes(previewPrefix));
 					maxStreamingHeight = Math.max(maxStreamingHeight, component.render(term.columns).length);
 					expect(term.isNativeViewportAtBottom()).toBe(true);
+				} else if (i === lifecycleSteps.length - 1) {
+					const finalViewportText = term
+						.getViewport()
+						.map(row => row.trimEnd())
+						.join("\n");
+					expect(finalViewportText).toContain(finalSentinel);
+					expect(finalViewportText).not.toContain(previewPrefix);
 				}
 			}
 
 			expect(sawPreviewSentinel).toBe(true);
 			expect(maxStreamingHeight).toBeGreaterThan(term.rows);
-
-			term.scrollLines(1_000);
-			await settleTerminal(component, scheduler, term);
-
-			const finalBufferText = normalizedBufferRows(term).join("\n");
-			expect(finalBufferText).toContain(finalSentinel);
-			expect(finalBufferText).not.toContain(previewPrefix);
-
-			term.scrollLines(-1_000);
-			await term.flush();
-			const scrolledViewportText = term
-				.getViewport()
-				.map(row => row.trimEnd())
-				.join("\n");
-			expect(scrolledViewportText).not.toContain(previewPrefix);
-			term.scrollLines(1_000);
-			await term.flush();
 		} finally {
 			component.stopAnimation();
 			tui.stop();

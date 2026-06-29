@@ -1,7 +1,6 @@
 import { Database } from "bun:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
-import * as os from "node:os";
 import * as path from "node:path";
 import { syncAllSessions } from "@oh-my-pi/omp-stats/aggregator";
 import { closeDb, getOverallStats, getRecentRequests, initDb, insertMessageStats } from "@oh-my-pi/omp-stats/db";
@@ -9,33 +8,42 @@ import type { MessageStats } from "@oh-my-pi/omp-stats/types";
 import { getAgentDir, getSessionsDir, getStatsDbPath, setAgentDir, TempDir } from "@oh-my-pi/pi-utils";
 
 const XDG_KEYS = ["XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME"] as const;
-const originalConfigDir = process.env.PI_CONFIG_DIR;
 const originalAgentDir = getAgentDir();
-const originalXdg: Record<string, string | undefined> = {};
+const originalHome = process.env.HOME;
+const originalXdg: Record<string, string | undefined> = {
+	XDG_DATA_HOME: process.env.XDG_DATA_HOME,
+	XDG_STATE_HOME: process.env.XDG_STATE_HOME,
+	XDG_CACHE_HOME: process.env.XDG_CACHE_HOME,
+};
 let tempDir: TempDir | null = null;
 
-beforeEach(() => {
+async function resetStatsDb(): Promise<void> {
+	const dbPath = getStatsDbPath();
+	await Promise.all([
+		fs.rm(dbPath, { force: true }),
+		fs.rm(`${dbPath}-wal`, { force: true }),
+		fs.rm(`${dbPath}-shm`, { force: true }),
+	]);
+}
+
+beforeEach(async () => {
 	tempDir = TempDir.createSync("@pi-stats-fork-dedup-");
-	for (const key of XDG_KEYS) {
-		originalXdg[key] = process.env[key];
-		delete process.env[key];
-	}
-	const configDir = path.relative(os.homedir(), tempDir.join("config"));
-	process.env.PI_CONFIG_DIR = configDir;
-	setAgentDir(path.join(os.homedir(), configDir, "agent"));
+	for (const key of XDG_KEYS) delete process.env[key];
+	const homeDir = tempDir.join("home");
+	await fs.mkdir(homeDir, { recursive: true });
+	process.env.HOME = homeDir;
+	setAgentDir(path.join(homeDir, ".pi", "agent"));
+	await resetStatsDb();
 });
 
-afterEach(() => {
+afterEach(async () => {
 	closeDb();
-	if (originalConfigDir === undefined) {
-		delete process.env.PI_CONFIG_DIR;
-	} else {
-		process.env.PI_CONFIG_DIR = originalConfigDir;
-	}
-	for (const key of XDG_KEYS) {
-		const prior = originalXdg[key];
-		if (prior === undefined) delete process.env[key];
-		else process.env[key] = prior;
+	await resetStatsDb();
+	if (originalHome === undefined) delete process.env.HOME;
+	else process.env.HOME = originalHome;
+	for (const [key, value] of Object.entries(originalXdg)) {
+		if (value === undefined) delete process.env[key];
+		else process.env[key] = value;
 	}
 	setAgentDir(originalAgentDir);
 	tempDir?.removeSync();

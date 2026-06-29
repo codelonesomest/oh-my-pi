@@ -83,7 +83,7 @@ describe("Z.AI web search provider", () => {
 		} as unknown as AuthStorage;
 
 		const response = await searchZai({
-			query: "omp z.ai search",
+			query: "pi z.ai search",
 			authStorage,
 			fetch: fetchImpl,
 			sessionId: "session-zai-test",

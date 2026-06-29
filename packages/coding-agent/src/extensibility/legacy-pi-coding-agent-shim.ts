@@ -21,7 +21,7 @@ import type { ToolDefinition } from "./extensions/types";
 import { Type } from "./typebox";
 
 const TOOL_DEFINITION_MARKER = "__isToolDefinition";
-const LEGACY_BUILTIN_TOOL_MARKER = "__ompLegacyBuiltinTool";
+const LEGACY_BUILTIN_TOOL_MARKER = "__piLegacyBuiltinTool";
 const LEGACY_CODING_TOOL_NAMES = ["read", "bash", "edit", "write"] as const;
 
 type LegacyCodingToolName = (typeof LEGACY_CODING_TOOL_NAMES)[number];

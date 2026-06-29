@@ -37,7 +37,7 @@ const INTERNAL_SCHEMES_WITH_SELECTORS: Record<string, true> = {
 	issue: true,
 	local: true,
 	memory: true,
-	omp: true,
+	pi: true,
 	pr: true,
 	rule: true,
 	skill: true,
@@ -56,10 +56,15 @@ const NARROW_NO_BREAK_SPACE = "\u202F";
 const TOP_LEVEL_INTERNAL_URL_PREFIXES = [
 	"agent://",
 	"artifact://",
-	"skill://",
-	"rule://",
+	"history://",
+	"issue://",
 	"local://",
 	"mcp://",
+	"memory://",
+	"pi://",
+	"pr://",
+	"rule://",
+	"skill://",
 	"ssh://",
 	"vault://",
 ] as const;
@@ -113,10 +118,15 @@ function normalizeAtPrefix(filePath: string): string {
 		// Internal URL shorthands
 		withoutAt.startsWith("agent://") ||
 		withoutAt.startsWith("artifact://") ||
-		withoutAt.startsWith("skill://") ||
-		withoutAt.startsWith("rule://") ||
+		withoutAt.startsWith("history://") ||
+		withoutAt.startsWith("issue://") ||
 		withoutAt.startsWith("local:") ||
-		withoutAt.startsWith("mcp://")
+		withoutAt.startsWith("mcp://") ||
+		withoutAt.startsWith("memory://") ||
+		withoutAt.startsWith("pi://") ||
+		withoutAt.startsWith("pr://") ||
+		withoutAt.startsWith("rule://") ||
+		withoutAt.startsWith("skill://")
 	) {
 		return withoutAt;
 	}
@@ -192,7 +202,10 @@ export interface LineRange {
 
 const LINE_RANGE_CHUNK_RE = /^L?(\d+)(?:(\.\.|[-+])L?(\d+)?)?$/i;
 
-/** Parse a single `N`, `N-M`, `N-`, `N+K`, or `..`-aliased (`N..M`, `N..`) chunk. Throws via {@link ToolError} on invalid bounds. */
+/**
+ * Parse a single `N`, `N-M`, `N-`, `N+K`, or `..`-aliased (`N..M`, `N..`) chunk.
+ * Throws via {@link ToolError} on invalid bounds.
+ */
 export function parseLineRangeChunk(sel: string): LineRange | null {
 	const lineMatch = LINE_RANGE_CHUNK_RE.exec(sel);
 	if (!lineMatch) return null;
@@ -488,6 +501,7 @@ export function formatPathRelativeToCwd(
 export function stripOuterDoubleQuotes(input: string): string {
 	return input.startsWith('"') && input.endsWith('"') && input.length > 1 ? input.slice(1, -1) : input;
 }
+
 function normalizePathSeparators(input: string): string {
 	if (isInternalUrlPath(input)) return input;
 	if (!input.includes("\\")) return input;

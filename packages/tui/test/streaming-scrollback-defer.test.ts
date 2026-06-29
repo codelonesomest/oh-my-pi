@@ -124,17 +124,24 @@ function rows(prefix: string, count: number): string[] {
 
 describe("streaming scrollback defer", () => {
 	let savedTerminalEnv: Record<string, string | undefined> = {};
+	const DIRECT_TERMINAL_ENV_KEYS = [
+		"TERM_PROGRAM",
+		"PI_TUI_RESIZE_IN_PLACE",
+		"CMUX_WORKSPACE_ID",
+		"CMUX_SURFACE_ID",
+	] as const;
 	beforeEach(() => {
-		// A resize on Warp takes the in-place path (no ED3), so neutralize the
-		// ambient terminal identity to keep the direct-terminal scrollback
-		// assertions below deterministic on any dev machine.
-		for (const key of ["TERM_PROGRAM", "PI_TUI_RESIZE_IN_PLACE"]) {
+		// A resize on Warp takes the in-place path (no ED3), and cmux
+		// surface/workspace ids mark a multiplexer session, so neutralize the ambient
+		// terminal identity to keep the direct-terminal scrollback assertions below
+		// deterministic on any dev machine.
+		for (const key of DIRECT_TERMINAL_ENV_KEYS) {
 			savedTerminalEnv[key] = Bun.env[key];
 			delete Bun.env[key];
 		}
 	});
 	afterEach(() => {
-		for (const key in savedTerminalEnv) {
+		for (const key of DIRECT_TERMINAL_ENV_KEYS) {
 			const value = savedTerminalEnv[key];
 			if (value === undefined) delete Bun.env[key];
 			else Bun.env[key] = value;
@@ -707,14 +714,20 @@ function expectNoLoss(term: VirtualTerminal, frame: string[]): string[] {
 
 describe("scrollback commit gap — commit-unstable barriers", () => {
 	let savedTerminalEnv: Record<string, string | undefined> = {};
+	const DIRECT_TERMINAL_ENV_KEYS = [
+		"TERM_PROGRAM",
+		"PI_TUI_RESIZE_IN_PLACE",
+		"CMUX_WORKSPACE_ID",
+		"CMUX_SURFACE_ID",
+	] as const;
 	beforeEach(() => {
-		for (const key of ["TERM_PROGRAM", "PI_TUI_RESIZE_IN_PLACE"]) {
+		for (const key of DIRECT_TERMINAL_ENV_KEYS) {
 			savedTerminalEnv[key] = Bun.env[key];
 			delete Bun.env[key];
 		}
 	});
 	afterEach(() => {
-		for (const key in savedTerminalEnv) {
+		for (const key of DIRECT_TERMINAL_ENV_KEYS) {
 			const value = savedTerminalEnv[key];
 			if (value === undefined) delete Bun.env[key];
 			else Bun.env[key] = value;

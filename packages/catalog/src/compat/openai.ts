@@ -62,7 +62,7 @@ const DSML_HEALING_PROVIDERS = new Set([
  * unsupported levels onto the closest accepted ones. Stamped in the compat
  * builder (not only at discovery) so stale-cached and custom `ollama`-provider
  * specs are backfilled on every `buildModel`, not just on a fresh
- * `omp models refresh`. Custom OpenAI-compatible providers pointed at a local
+ * `pi models refresh`. Custom OpenAI-compatible providers pointed at a local
  * Ollama port under a different provider id are not covered — they must set
  * `compat.reasoningEffortMap` themselves.
  */

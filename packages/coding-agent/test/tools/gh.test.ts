@@ -178,7 +178,7 @@ async function createPrFixture(): Promise<PrFixture> {
 /**
  * Stub `os.homedir()` AND rebuild the cached `dirs` resolver in pi-utils so
  * `getWorktreesDir()` resolves under an isolated temp home instead of the
- * user's real `~/.omp/wt`. Returns the temp home and a cleanup hook.
+ * user's real `~/.pi/wt`. Returns the temp home and a cleanup hook.
  */
 interface TempHome {
 	home: string;
@@ -189,7 +189,7 @@ async function setupTempHome(): Promise<{ home: string; cleanup: () => Promise<v
 	const home = await fs.mkdtemp(path.join(os.tmpdir(), "gh-pr-tool-home-"));
 	vi.spyOn(os, "homedir").mockReturnValue(home);
 	// Clear XDG_*_HOME so the rebuilt resolver routes `dirs.rootSubdir("wt", "data")`
-	// through the spied homedir instead of `$XDG_DATA_HOME/omp/wt` (CI sets these).
+	// through the spied homedir instead of `$XDG_DATA_HOME/pi/wt` (CI sets these).
 	const xdgKeys = ["XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME"] as const;
 	const xdgPrevious: Partial<Record<(typeof xdgKeys)[number], string | undefined>> = {};
 	for (const key of xdgKeys) {
@@ -200,7 +200,7 @@ async function setupTempHome(): Promise<{ home: string; cleanup: () => Promise<v
 	// we must rebuild the resolver after the spy + env scrub are in place.
 	// `setAgentDir` recreates it; we point it at the temp home's default agent dir.
 	const originalAgentDir = getAgentDir();
-	setAgentDir(path.join(home, ".omp", "agent"));
+	setAgentDir(path.join(home, ".pi", "agent"));
 	return {
 		home,
 		cleanup: async () => {
@@ -224,7 +224,7 @@ async function setupTempHome(): Promise<{ home: string; cleanup: () => Promise<v
 async function expectedWorktreePath(home: string, primaryRoot: string, localBranch: string): Promise<string> {
 	const prNumber = localBranch.replace(/^pr-/, "");
 	const segment = `${prNumber}-${hashPath(primaryRoot)}`;
-	return fs.realpath(path.join(home, ".omp", "wt", segment));
+	return fs.realpath(path.join(home, ".pi", "wt", segment));
 }
 
 describe("parsePrUnifiedDiff", () => {
@@ -826,6 +826,10 @@ describe("github tool", () => {
 			const cfg = runGit(fixture.repoRoot, ["config", "--get-regexp", "^branch\\.pr-123\\."]);
 			expect(cfg).toContain("branch.pr-123.pushremote forksrc");
 			expect(cfg).toContain(`branch.pr-123.merge refs/heads/${fixture.headRefName}`);
+			expect(cfg).toContain(`branch.pr-123.piprheadref ${fixture.headRefName}`);
+			expect(cfg).toContain("branch.pr-123.piprurl https://github.com/base/repo/pull/123");
+			expect(cfg).toContain("branch.pr-123.pipriscrossrepository true");
+			expect(cfg).toContain("branch.pr-123.piprmaintainercanmodify true");
 			expect(runGit(fixture.repoRoot, ["worktree", "list", "--porcelain"])).toContain(`worktree ${worktreePath}`);
 			expect(runGit(worktreePath, ["branch", "--show-current"])).toBe("pr-123");
 		});
@@ -934,9 +938,9 @@ describe("github tool", () => {
 			expect(runGit(wt200, ["branch", "--show-current"])).toBe("pr-200");
 			// Both PR URLs persisted to git config (single read instead of two).
 			// `--get-regexp` echoes variable names in git's canonical lowercase.
-			const prUrls = runGit(fixture.repoRoot, ["config", "--get-regexp", "^branch\\.pr-.*\\.ompprurl$"]);
-			expect(prUrls).toContain("branch.pr-100.ompprurl https://github.com/owner/repo/pull/100");
-			expect(prUrls).toContain("branch.pr-200.ompprurl https://github.com/owner/repo/pull/200");
+			const prUrls = runGit(fixture.repoRoot, ["config", "--get-regexp", "^branch\\.pr-.*\\.piprurl$"]);
+			expect(prUrls).toContain("branch.pr-100.piprurl https://github.com/owner/repo/pull/100");
+			expect(prUrls).toContain("branch.pr-200.piprurl https://github.com/owner/repo/pull/200");
 
 			const summaries = result.details?.checkouts;
 			expect(summaries?.length).toBe(2);
@@ -971,6 +975,49 @@ describe("github tool", () => {
 			expect(runGit(fixture.baseDir, ["--git-dir", fixture.originBare, "rev-parse", "refs/heads/main"])).toBe(
 				originMainBefore,
 			);
+		});
+	});
+
+	describe("pr_push with legacy checkout metadata", () => {
+		let fixture: PrFixture;
+		let pushedHead: string;
+		beforeAll(async () => {
+			fixture = await createPrFixture();
+			runGit(fixture.repoRoot, ["checkout", "-b", "legacy-pr-branch", "origin/main"]);
+			await Bun.write(path.join(fixture.repoRoot, "README.md"), "base\nlegacy\n");
+			runGit(fixture.repoRoot, ["add", "README.md"]);
+			runGit(fixture.repoRoot, ["commit", "-m", "legacy metadata branch commit"]);
+			pushedHead = runGit(fixture.repoRoot, ["rev-parse", "HEAD"]);
+			runGit(fixture.repoRoot, ["config", "branch.legacy-pr-branch.pushRemote", "forksrc"]);
+			runGit(fixture.repoRoot, ["config", "branch.legacy-pr-branch.ompPrHeadRef", "legacy/pr-push"]);
+			runGit(fixture.repoRoot, [
+				"config",
+				"branch.legacy-pr-branch.ompPrUrl",
+				"https://github.com/owner/repo/pull/456",
+			]);
+			runGit(fixture.repoRoot, ["config", "branch.legacy-pr-branch.ompPrIsCrossRepository", "true"]);
+			runGit(fixture.repoRoot, ["config", "branch.legacy-pr-branch.ompPrMaintainerCanModify", "true"]);
+		});
+		afterAll(async () => {
+			await removeWithRetries(fixture.baseDir);
+		});
+
+		it("pushes a branch that only has pre-rename PR metadata", async () => {
+			const tool = new GithubTool(createSession(fixture.repoRoot));
+			const result = await tool.execute("pr-push", { op: "pr_push" });
+			const text = result.content[0]?.type === "text" ? result.content[0].text : "";
+
+			expect(text).toContain("# Pushed Pull Request Branch");
+			expect(text).toContain("Local branch: legacy-pr-branch");
+			expect(text).toContain("Remote: forksrc");
+			expect(text).toContain("Remote branch: legacy/pr-push");
+			expect(text).toContain("PR: https://github.com/owner/repo/pull/456");
+			expect(result.details?.branch).toBe("legacy-pr-branch");
+			expect(result.details?.remote).toBe("forksrc");
+			expect(result.details?.remoteBranch).toBe("legacy/pr-push");
+			expect(
+				runGit(fixture.baseDir, ["--git-dir", fixture.forkBare, "rev-parse", "refs/heads/legacy/pr-push"]),
+			).toBe(pushedHead);
 		});
 	});
 

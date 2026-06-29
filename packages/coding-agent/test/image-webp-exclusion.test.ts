@@ -77,25 +77,30 @@ describe("modelLacksWebpSupport", () => {
 		expect(modelLacksWebpSupport(undefined)).toBe(false);
 	});
 
-	test("webpExclusionForModel yields true|undefined so the OMP_NO_WEBP fallback survives", () => {
+	test("webpExclusionForModel yields true|undefined so PI_NO_WEBP / legacy OMP_NO_WEBP fallback survives", () => {
 		// `true` forces exclusion for Ollama...
 		expect(webpExclusionForModel({ provider: "ollama", api: "openai-responses" })).toBe(true);
 		// ...but a capable model returns `undefined` (NOT `false`), so resizeImage's
-		// env fallback still applies instead of being overridden off.
+		// env fallbacks still apply instead of being overridden off.
 		expect(webpExclusionForModel({ provider: "openai", api: "openai-responses" })).toBeUndefined();
 	});
 });
 
 describe("normalizeModelContextImages model-aware WebP exclusion", () => {
-	const prior = Bun.env.OMP_NO_WEBP;
+	const priorPi = Bun.env.PI_NO_WEBP;
+	const priorOmp = Bun.env.OMP_NO_WEBP;
+	const env = Bun.env as Record<string, string | undefined>;
 
 	beforeEach(() => {
-		delete (Bun.env as Record<string, string | undefined>).OMP_NO_WEBP;
+		delete env.PI_NO_WEBP;
+		delete env.OMP_NO_WEBP;
 	});
 
 	afterEach(() => {
-		if (prior === undefined) delete (Bun.env as Record<string, string | undefined>).OMP_NO_WEBP;
-		else Bun.env.OMP_NO_WEBP = prior;
+		if (priorPi === undefined) delete env.PI_NO_WEBP;
+		else env.PI_NO_WEBP = priorPi;
+		if (priorOmp === undefined) delete env.OMP_NO_WEBP;
+		else env.OMP_NO_WEBP = priorOmp;
 	});
 
 	test("re-encodes a WebP image out of WebP for an Ollama-family model", async () => {
@@ -136,7 +141,7 @@ describe("normalizeModelContextImages model-aware WebP exclusion", () => {
 		expect(["image/png", "image/jpeg"]).toContain(mime);
 	});
 
-	test("keeps WebP for a WebP-capable model when OMP_NO_WEBP is unset", async () => {
+	test("keeps WebP for a WebP-capable model when PI_NO_WEBP and legacy OMP_NO_WEBP are unset", async () => {
 		const [anthropic] = getBundledModels("anthropic");
 		expect(anthropic).toBeDefined();
 		const webp = { type: "image" as const, data: await makeRedWebP(200, 200), mimeType: "image/webp" };

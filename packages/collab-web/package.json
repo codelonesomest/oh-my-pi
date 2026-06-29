@@ -3,8 +3,8 @@
   "name": "@oh-my-pi/collab-web",
   "version": "15.11.7",
   "private": true,
-  "description": "Browser guest client and local relay tools for omp collab live sessions",
-  "homepage": "https://omp.sh",
+  "description": "Browser guest client and local relay tools for pi collab live sessions",
+  "homepage": "https://pi.sh",
   "author": "Can Boluk",
   "license": "MIT",
   "repository": {

@@ -1,30 +1,51 @@
 import { Database } from "bun:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
-import * as os from "node:os";
 import * as path from "node:path";
 import { syncAllSessions } from "@oh-my-pi/omp-stats/aggregator";
 import { closeDb, getOverallStats, getRecentRequests } from "@oh-my-pi/omp-stats/db";
 import { parseSessionFile } from "@oh-my-pi/omp-stats/parser";
 import { getAgentDir, getSessionsDir, getStatsDbPath, setAgentDir, TempDir } from "@oh-my-pi/pi-utils";
 
-const originalConfigDir = process.env.PI_CONFIG_DIR;
 const originalAgentDir = getAgentDir();
+const originalHome = process.env.HOME;
+const originalXdg: Record<string, string | undefined> = {
+	XDG_DATA_HOME: process.env.XDG_DATA_HOME,
+	XDG_STATE_HOME: process.env.XDG_STATE_HOME,
+	XDG_CACHE_HOME: process.env.XDG_CACHE_HOME,
+};
 let tempDir: TempDir | null = null;
 
-beforeEach(() => {
+async function resetStatsDb(): Promise<void> {
+	const dbPath = getStatsDbPath();
+	await Promise.all([
+		fs.rm(dbPath, { force: true }),
+		fs.rm(`${dbPath}-wal`, { force: true }),
+		fs.rm(`${dbPath}-shm`, { force: true }),
+	]);
+}
+
+beforeEach(async () => {
+	closeDb();
 	tempDir = TempDir.createSync("@pi-stats-priority-");
-	const configDir = path.relative(os.homedir(), tempDir.join("config"));
-	process.env.PI_CONFIG_DIR = configDir;
-	setAgentDir(path.join(os.homedir(), configDir, "agent"));
+	const homeDir = tempDir.join("home");
+	await fs.mkdir(homeDir, { recursive: true });
+	process.env.HOME = homeDir;
+	delete process.env.XDG_DATA_HOME;
+	delete process.env.XDG_STATE_HOME;
+	delete process.env.XDG_CACHE_HOME;
+	setAgentDir(path.join(homeDir, ".pi", "agent"));
+	await resetStatsDb();
 });
 
-afterEach(() => {
+afterEach(async () => {
 	closeDb();
-	if (originalConfigDir === undefined) {
-		delete process.env.PI_CONFIG_DIR;
-	} else {
-		process.env.PI_CONFIG_DIR = originalConfigDir;
+	await resetStatsDb();
+	if (originalHome === undefined) delete process.env.HOME;
+	else process.env.HOME = originalHome;
+	for (const [key, value] of Object.entries(originalXdg)) {
+		if (value === undefined) delete process.env[key];
+		else process.env[key] = value;
 	}
 	setAgentDir(originalAgentDir);
 	tempDir?.removeSync();

@@ -3,7 +3,7 @@
   "version": "16.2.5",
   "description": "Native Rust bindings for grep, clipboard, image processing, syntax highlighting, PTY, and shell operations via N-API",
   "type": "module",
-  "homepage": "https://omp.sh",
+  "homepage": "https://pi.sh",
   "author": "Can Boluk",
   "license": "MIT",
   "repository": {

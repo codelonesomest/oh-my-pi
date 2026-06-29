@@ -8,6 +8,15 @@ const repoRoot = path.join(import.meta.dir, "../../..");
 const rustDir = path.join(repoRoot, "crates/pi-natives");
 const nativeDir = path.join(import.meta.dir, "../native");
 const packageJsonPath = path.join(import.meta.dir, "../package.json");
+const rustupToolchain = "nightly-2026-04-29";
+const rustupCargoPath = Bun.spawnSync(["rustup", "which", "--toolchain", rustupToolchain, "cargo"], {
+	cwd: repoRoot,
+	stdout: "pipe",
+	stderr: "pipe",
+});
+const rustupCargoBinary = rustupCargoPath.exitCode === 0 ? rustupCargoPath.stdout.toString().trim() : null;
+const rustupToolchainBin = rustupCargoBinary ? path.dirname(rustupCargoBinary) : null;
+const rustPathSep = path.delimiter;
 
 const crossTarget = Bun.env.CROSS_TARGET;
 const targetPlatform = Bun.env.TARGET_PLATFORM || process.platform;
@@ -389,7 +398,14 @@ if (!napiBin) {
 }
 
 async function runNapiBuildWithSccacheFallback() {
-	let buildResult = await $`${napiBin} ${napiArgs}`.nothrow();
+	const napiEnv = {
+		...process.env,
+		RUSTUP_TOOLCHAIN: rustupToolchain,
+		PATH: rustupToolchainBin
+			? `${rustupToolchainBin}${rustPathSep}${process.env.PATH ?? ""}`
+			: (process.env.PATH ?? ""),
+	};
+	let buildResult = await $`${napiBin} ${napiArgs}`.env(napiEnv).nothrow();
 	let stderr = buildResult.stderr?.toString("utf-8") ?? "";
 	if (
 		buildResult.exitCode !== 0 &&
@@ -398,6 +414,10 @@ async function runNapiBuildWithSccacheFallback() {
 		stderr.includes("cache storage failed")
 	) {
 		const retryEnv = { ...process.env };
+		retryEnv.RUSTUP_TOOLCHAIN = rustupToolchain;
+		if (rustupToolchainBin) {
+			retryEnv.PATH = `${rustupToolchainBin}${rustPathSep}${retryEnv.PATH ?? ""}`;
+		}
 		delete retryEnv.RUSTC_WRAPPER;
 		delete retryEnv.SCCACHE_BUCKET;
 		delete retryEnv.SCCACHE_ENDPOINT;

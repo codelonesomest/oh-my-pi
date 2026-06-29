@@ -3,7 +3,7 @@
   "name": "@oh-my-pi/snapcompact",
   "version": "16.2.5",
   "description": "Bitmap-frame context compression for vision-capable LLMs",
-  "homepage": "https://omp.sh",
+  "homepage": "https://pi.sh",
   "author": "Can Boluk",
   "license": "MIT",
   "repository": {

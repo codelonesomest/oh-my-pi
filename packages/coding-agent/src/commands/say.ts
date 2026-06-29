@@ -29,9 +29,9 @@ export default class Say extends Command {
 	};
 
 	static examples = [
-		'omp say "hello world"',
-		'omp say "hello world" --out /tmp/hello.wav',
-		'omp say "bonjour" --voice af_heart --model kokoro',
+		'pi say "hello world"',
+		'pi say "hello world" --out /tmp/hello.wav',
+		'pi say "bonjour" --voice af_heart --model kokoro',
 	];
 
 	async run(): Promise<void> {
@@ -60,7 +60,7 @@ export default class Say extends Command {
 				process.stderr.write(
 					chalk.red(
 						`error: could not synthesize with local TTS model "${model}". ` +
-							"Run `omp setup speech` to install it.\n",
+							"Run `pi setup speech` to install it.\n",
 					),
 				);
 				exitCode = 1;

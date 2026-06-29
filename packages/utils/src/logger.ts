@@ -1,12 +1,12 @@
 /**
- * Centralized logger for omp.
+ * Centralized logger for pi.
  *
- * Default: rotating `~/.omp/logs/omp.<DATE>.log`, no console output (writing
+ * Default: rotating `~/.pi/logs/pi.<DATE>.log`, no console output (writing
  * to stdout/stderr would corrupt the TUI). Long-running headless services
  * (the auth broker, etc.) call {@link setTransports} to swap in a console
  * transport so a process supervisor (pm2, journald, k8s) captures the logs.
  *
- * Each entry includes `process.pid` so concurrent omp instances stay
+ * Each entry includes `process.pid` so concurrent pi instances stay
  * traceable.
  */
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -76,7 +76,7 @@ function getLogFormat(): winston.Logform.Format {
 function makeFileTransport(dir?: string): winston.transport {
 	return new DailyRotateFile({
 		dirname: ensureDir(dir ?? getLogsDir()),
-		filename: "omp.%DATE%.log",
+		filename: "pi.%DATE%.log",
 		datePattern: "YYYY-MM-DD",
 		maxSize: "10m",
 		maxFiles: 5,

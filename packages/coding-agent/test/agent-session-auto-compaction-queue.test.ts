@@ -15,7 +15,7 @@ import * as unexpectedStopClassifier from "@oh-my-pi/pi-coding-agent/session/une
 import { getProjectAgentDir, TempDir, withTimeout } from "@oh-my-pi/pi-utils";
 import * as logger from "@oh-my-pi/pi-utils/logger";
 
-const runtimeSignalStoreKey = "__ompRuntimeSignals";
+const runtimeSignalStoreKey = "__piRuntimeSignals";
 
 type RuntimeSignalGlobal = typeof globalThis & { [runtimeSignalStoreKey]?: string[] };
 
@@ -54,7 +54,7 @@ describe("AgentSession auto-compaction queue resume", () => {
 				'\tpi.on("session_before_compact", async (event) => {',
 				`\t\tconst signals = globalThis.${runtimeSignalStoreKey} ?? (globalThis.${runtimeSignalStoreKey} = []);`,
 				'\t\tsignals.push("before_compact:enter");',
-				"\t\tconst gate = globalThis.__ompManualCompactGate;",
+				"\t\tconst gate = globalThis.__piManualCompactGate;",
 				"\t\tif (gate) await gate;",
 				"\t\treturn {",
 				"\t\t\tcompaction: {",
@@ -142,7 +142,7 @@ describe("AgentSession auto-compaction queue resume", () => {
 				await tempDir?.remove();
 			} finally {
 				getRuntimeSignals().length = 0;
-				(globalThis as typeof globalThis & { __ompManualCompactGate?: Promise<void> }).__ompManualCompactGate =
+				(globalThis as typeof globalThis & { __piManualCompactGate?: Promise<void> }).__piManualCompactGate =
 					undefined;
 				vi.restoreAllMocks();
 			}
@@ -291,7 +291,7 @@ describe("AgentSession auto-compaction queue resume", () => {
 		// #autoCompactionAbortController stays installed across the manual /compact
 		// startup abort below.
 		const gate = Promise.withResolvers<void>();
-		(globalThis as typeof globalThis & { __ompManualCompactGate?: Promise<void> }).__ompManualCompactGate =
+		(globalThis as typeof globalThis & { __piManualCompactGate?: Promise<void> }).__piManualCompactGate =
 			gate.promise;
 
 		const appendCompactionSpy = vi.spyOn(sessionManager, "appendCompaction");

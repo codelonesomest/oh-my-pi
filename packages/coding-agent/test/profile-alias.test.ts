@@ -1,18 +1,46 @@
-import { describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
 import * as path from "node:path";
-import {
-	installProfileAlias,
-	readProfileAliasConfigFile,
-	resolveProfileAliasCommandFromProcess,
-} from "../src/cli/profile-alias";
+import * as url from "node:url";
+import type * as ProfileAliasModule from "../src/cli/profile-alias";
+
+let installProfileAlias: typeof ProfileAliasModule.installProfileAlias;
+let readProfileAliasConfigFile: typeof ProfileAliasModule.readProfileAliasConfigFile;
+let resolveProfileAliasCommandFromProcess: typeof ProfileAliasModule.resolveProfileAliasCommandFromProcess;
+let tempModuleRoot = "";
+
+beforeAll(async () => {
+	tempModuleRoot = await fs.mkdtemp(path.join(os.tmpdir(), "pi-profile-alias-module-"));
+	const modulePath = path.join(tempModuleRoot, "src", "cli", "profile-alias.ts");
+	await fs.mkdir(path.dirname(modulePath), { recursive: true });
+	await Bun.write(
+		modulePath,
+		await Bun.file(path.join(import.meta.dir, "..", "src", "cli", "profile-alias.ts")).text(),
+	);
+
+	const nodeModuleScope = path.join(tempModuleRoot, "node_modules", "@oh-my-pi");
+	await fs.mkdir(nodeModuleScope, { recursive: true });
+	await fs.symlink(path.join(import.meta.dir, "..", "..", "utils"), path.join(nodeModuleScope, "pi-utils"), "dir");
+
+	// Dynamic import is required here to load a temp module graph whose node_modules resolves workspace sources.
+	const profileAlias = (await import(url.pathToFileURL(modulePath).href)) as typeof ProfileAliasModule;
+	installProfileAlias = profileAlias.installProfileAlias;
+	readProfileAliasConfigFile = profileAlias.readProfileAliasConfigFile;
+	resolveProfileAliasCommandFromProcess = profileAlias.resolveProfileAliasCommandFromProcess;
+});
+
+afterAll(async () => {
+	await fs.rm(tempModuleRoot, { recursive: true, force: true });
+});
 
 describe("profile alias installer", () => {
-	it("writes a bash-compatible function that forwards subcommands through omp", async () => {
+	it("writes a bash-compatible function that forwards subcommands through pi", async () => {
 		const files = new Map<string, string>();
 
 		const result = await installProfileAlias({
 			profile: "work",
-			aliasName: "omp-work",
+			aliasName: "pi-work",
 			shellPath: "/bin/bash",
 			platform: "linux",
 			homeDir: "/home/me",
@@ -23,9 +51,9 @@ describe("profile alias installer", () => {
 		});
 
 		expect(result.configPath).toBe("/home/me/.bashrc");
-		expect(result.command).toBe("omp --profile=work");
-		expect(files.get("/home/me/.bashrc")).toContain("omp-work() {");
-		expect(files.get("/home/me/.bashrc")).toContain('command omp --profile=work "$@"');
+		expect(result.command).toBe("pi --profile=work");
+		expect(files.get("/home/me/.bashrc")).toContain("pi-work() {");
+		expect(files.get("/home/me/.bashrc")).toContain('command pi --profile=work "$@"');
 	});
 
 	it("resolves source invocations without forcing the source checkout as cwd", () => {
@@ -58,12 +86,12 @@ describe("profile alias installer", () => {
 		expect(command.powerShell).toBe(`'${runtime}' '${expectedScriptPath}'`);
 	});
 
-	it("can target the current source invocation instead of the installed omp binary", async () => {
+	it("can target the current source invocation instead of the installed pi binary", async () => {
 		const files = new Map<string, string>();
 
 		const result = await installProfileAlias({
 			profile: "work",
-			aliasName: "omp-work",
+			aliasName: "pi-work",
 			shellPath: "/bin/zsh",
 			platform: "darwin",
 			homeDir: "/Users/me",
@@ -80,7 +108,7 @@ describe("profile alias installer", () => {
 		});
 
 		expect(result.command).toBe("bun /repo/packages/coding-agent/src/cli.ts --profile=work");
-		expect(files.get("/Users/me/.zshrc")).toContain("omp-work() {");
+		expect(files.get("/Users/me/.zshrc")).toContain("pi-work() {");
 		expect(files.get("/Users/me/.zshrc")).toContain(
 			`command bun '/repo/packages/coding-agent/src/cli.ts' --profile=work "$@"`,
 		);
@@ -91,7 +119,7 @@ describe("profile alias installer", () => {
 
 		const result = await installProfileAlias({
 			profile: "work",
-			aliasName: "omp-work",
+			aliasName: "pi-work",
 			shellPath: "/bin/zsh",
 			platform: "darwin",
 			homeDir: "/Users/me",
@@ -103,7 +131,7 @@ describe("profile alias installer", () => {
 		});
 
 		expect(result.configPath).toBe("/Users/me/.config/zsh/.zshrc");
-		expect(files.get(result.configPath)).toContain("omp-work() {");
+		expect(files.get(result.configPath)).toContain("pi-work() {");
 	});
 
 	it("writes a fish function that forwards argv", async () => {
@@ -111,7 +139,7 @@ describe("profile alias installer", () => {
 
 		await installProfileAlias({
 			profile: "work",
-			aliasName: "omp-work",
+			aliasName: "pi-work",
 			shellPath: "/opt/homebrew/bin/fish",
 			platform: "darwin",
 			homeDir: "/Users/me",
@@ -122,9 +150,9 @@ describe("profile alias installer", () => {
 			},
 		});
 
-		const content = files.get("/Users/me/.config/fish/conf.d/omp-profiles.fish") ?? "";
-		expect(content).toContain("function omp-work --wraps omp");
-		expect(content).toContain("command omp --profile=work $argv");
+		const content = files.get("/Users/me/.config/fish/conf.d/pi-profiles.fish") ?? "";
+		expect(content).toContain("function pi-work --wraps pi");
+		expect(content).toContain("command pi --profile=work $argv");
 	});
 
 	it("installs the fish alias under XDG_CONFIG_HOME when set", async () => {
@@ -132,7 +160,7 @@ describe("profile alias installer", () => {
 
 		const result = await installProfileAlias({
 			profile: "work",
-			aliasName: "omp-work",
+			aliasName: "pi-work",
 			shellPath: "/usr/bin/fish",
 			platform: "linux",
 			homeDir: "/home/me",
@@ -143,8 +171,8 @@ describe("profile alias installer", () => {
 			},
 		});
 
-		expect(result.configPath).toBe("/home/me/.dotfiles/config/fish/conf.d/omp-profiles.fish");
-		expect(files.get(result.configPath)).toContain("function omp-work --wraps omp");
+		expect(result.configPath).toBe("/home/me/.dotfiles/config/fish/conf.d/pi-profiles.fish");
+		expect(files.get(result.configPath)).toContain("function pi-work --wraps pi");
 	});
 
 	it("writes a PowerShell function because aliases cannot carry arguments", async () => {
@@ -152,7 +180,7 @@ describe("profile alias installer", () => {
 
 		await installProfileAlias({
 			profile: "work",
-			aliasName: "omp-work",
+			aliasName: "pi-work",
 			shellPath: "pwsh.exe",
 			platform: "win32",
 			homeDir: "C:\\Users\\me",
@@ -164,8 +192,8 @@ describe("profile alias installer", () => {
 
 		const psConfigPath = path.join("C:\\Users\\me", "Documents", "PowerShell", "Microsoft.PowerShell_profile.ps1");
 		const content = files.get(psConfigPath) ?? "";
-		expect(content).toContain("function omp-work");
-		expect(content).toContain("& omp --profile=work @args");
+		expect(content).toContain("function pi-work");
+		expect(content).toContain("& pi --profile=work @args");
 	});
 
 	it("detects pwsh from PSModulePath when SHELL is unset on Windows", async () => {
@@ -173,7 +201,7 @@ describe("profile alias installer", () => {
 
 		const result = await installProfileAlias({
 			profile: "work",
-			aliasName: "omp-work",
+			aliasName: "pi-work",
 			platform: "win32",
 			homeDir: "C:\\Users\\me",
 			env: {
@@ -189,7 +217,7 @@ describe("profile alias installer", () => {
 		expect(result.shell).toBe("pwsh");
 		const psConfigPath = path.join("C:\\Users\\me", "Documents", "PowerShell", "Microsoft.PowerShell_profile.ps1");
 		expect(result.configPath).toBe(psConfigPath);
-		expect(files.get(result.configPath)).toContain("& omp --profile=work @args");
+		expect(files.get(result.configPath)).toContain("& pi --profile=work @args");
 	});
 
 	it("selects Windows PowerShell when only WindowsPowerShell modules are present", async () => {
@@ -197,7 +225,7 @@ describe("profile alias installer", () => {
 
 		const result = await installProfileAlias({
 			profile: "work",
-			aliasName: "omp-work",
+			aliasName: "pi-work",
 			platform: "win32",
 			homeDir: "C:\\Users\\me",
 			env: {
@@ -225,7 +253,7 @@ describe("profile alias installer", () => {
 
 		const result = await installProfileAlias({
 			profile: "work",
-			aliasName: "omp-work",
+			aliasName: "pi-work",
 			platform: "win32",
 			homeDir: "C:\\Users\\me",
 			env: { POWERSHELL_DISTRIBUTION_CHANNEL: "MSI:Windows 10 Pro" },
@@ -246,9 +274,9 @@ describe("profile alias installer", () => {
 				"/home/me/.zshrc",
 				[
 					"before",
-					"# >>> omp profile alias: omp-work >>>",
-					"alias omp-work='command omp --profile=old'",
-					"# <<< omp profile alias: omp-work <<<",
+					"# >>> pi profile alias: pi-work >>>",
+					"alias pi-work='command pi --profile=old'",
+					"# <<< pi profile alias: pi-work <<<",
 					"after",
 				].join("\n"),
 			],
@@ -256,7 +284,7 @@ describe("profile alias installer", () => {
 
 		await installProfileAlias({
 			profile: "work",
-			aliasName: "omp-work",
+			aliasName: "pi-work",
 			shellPath: "/bin/zsh",
 			platform: "darwin",
 			homeDir: "/home/me",
@@ -269,7 +297,7 @@ describe("profile alias installer", () => {
 		const content = files.get("/home/me/.zshrc") ?? "";
 		expect(content).toContain("before");
 		expect(content).toContain("after");
-		expect(content).toContain('command omp --profile=work "$@"');
+		expect(content).toContain('command pi --profile=work "$@"');
 		expect(content).not.toContain("--profile=old");
 	});
 
@@ -278,14 +306,14 @@ describe("profile alias installer", () => {
 		// was interrupted or hand-edited. Appending a fresh block would let the
 		// *next* install splice from the stale start through the new end, deleting
 		// the user config in between. Refuse and preserve the file untouched.
-		const original = ["# >>> omp profile alias: omp-work >>>", "omp-work() {", "export SECRET=keepme"].join("\n");
+		const original = ["# >>> pi profile alias: pi-work >>>", "pi-work() {", "export SECRET=keepme"].join("\n");
 		const files = new Map<string, string>([["/home/me/.zshrc", original]]);
 		let wrote = false;
 
 		await expect(
 			installProfileAlias({
 				profile: "work",
-				aliasName: "omp-work",
+				aliasName: "pi-work",
 				shellPath: "/bin/zsh",
 				platform: "darwin",
 				homeDir: "/home/me",
@@ -301,8 +329,8 @@ describe("profile alias installer", () => {
 		expect(files.get("/home/me/.zshrc")).toBe(original);
 	});
 
-	it("refuses to shadow the base omp command case-insensitively", async () => {
-		for (const aliasName of ["omp", "OMP"]) {
+	it("refuses to shadow the base pi command case-insensitively", async () => {
+		for (const aliasName of ["pi", "PI"]) {
 			await expect(
 				installProfileAlias({
 					profile: "work",
@@ -336,7 +364,7 @@ describe("profile alias installer", () => {
 		await expect(
 			installProfileAlias({
 				profile: "work",
-				aliasName: "omp-work",
+				aliasName: "pi-work",
 				shellPath: "/bin/sh",
 				platform: "linux",
 				homeDir: "/home/me",
@@ -364,7 +392,7 @@ describe("profile alias installer", () => {
 		await expect(
 			installProfileAlias({
 				profile: "work'; touch /tmp/pwn; #",
-				aliasName: "omp-work",
+				aliasName: "pi-work",
 				shellPath: "/bin/bash",
 				platform: "linux",
 				homeDir: "/home/me",
@@ -373,7 +401,7 @@ describe("profile alias installer", () => {
 					files.set(filePath, content);
 				},
 			}),
-		).rejects.toThrow("Invalid OMP profile");
+		).rejects.toThrow("Invalid PI profile");
 		expect(files.size).toBe(0);
 	});
 
@@ -382,7 +410,7 @@ describe("profile alias installer", () => {
 
 		const result = await installProfileAlias({
 			profile: "work",
-			aliasName: "omp-work",
+			aliasName: "pi-work",
 			shellPath: "/bin/bash",
 			platform: "win32",
 			homeDir: "C:\\Users\\me",
@@ -403,7 +431,7 @@ describe("profile alias installer", () => {
 
 		const result = await installProfileAlias({
 			profile: "work",
-			aliasName: "omp-work",
+			aliasName: "pi-work",
 			shellPath: "/bin/zsh",
 			platform: "win32",
 			homeDir: "C:\\Users\\me",
@@ -423,7 +451,7 @@ describe("profile alias installer", () => {
 
 		const result = await installProfileAlias({
 			profile: "work",
-			aliasName: "omp-work",
+			aliasName: "pi-work",
 			shellPath: "/bin/fish",
 			platform: "win32",
 			homeDir: "C:\\Users\\me",
@@ -434,8 +462,8 @@ describe("profile alias installer", () => {
 			},
 		});
 
-		expect(result.configPath).toBe("D:/xdg/fish/conf.d/omp-profiles.fish");
-		expect(result.reloadedWith).toBe("source 'D:/xdg/fish/conf.d/omp-profiles.fish'");
+		expect(result.configPath).toBe("D:/xdg/fish/conf.d/pi-profiles.fish");
+		expect(result.reloadedWith).toBe("source 'D:/xdg/fish/conf.d/pi-profiles.fish'");
 	});
 
 	it("preserves UNC path roots when normalizing POSIX shell config paths", async () => {
@@ -443,7 +471,7 @@ describe("profile alias installer", () => {
 
 		const result = await installProfileAlias({
 			profile: "work",
-			aliasName: "omp-work",
+			aliasName: "pi-work",
 			shellPath: "/bin/bash",
 			platform: "win32",
 			homeDir: "\\\\server\\share\\me",

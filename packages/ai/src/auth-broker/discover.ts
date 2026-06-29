@@ -38,9 +38,16 @@ export interface DiscoverAuthStorageOptions {
 	sourceLabel?: string;
 }
 
-/** Path to the local bearer token file. Created by `omp auth-broker token`. */
+/** Path to the local bearer token file. Created by `pi auth-broker token`. */
 export function getAuthBrokerTokenFilePath(): string {
 	return path.join(getConfigRootDir(), "auth-broker.token");
+}
+
+function resolveEnvValue(primaryName: string, legacyName: string): string | undefined {
+	const primary = process.env[primaryName]?.trim();
+	if (primary) return primary;
+	const legacy = process.env[legacyName]?.trim();
+	return legacy ? legacy : undefined;
 }
 
 /**
@@ -50,7 +57,7 @@ export function getAuthBrokerTokenFilePath(): string {
  */
 async function defaultResolveConfigValue(config: string): Promise<string | undefined> {
 	if (config.startsWith("!")) return undefined;
-	const envValue = process.env[config];
+	const envValue = process.env[config]?.trim();
 	return envValue || config;
 }
 
@@ -90,20 +97,20 @@ async function readConfigYaml(agentDir: string): Promise<ConfigSnapshot> {
 }
 
 function resolveSnapshotTtlMs(): number {
-	const raw = process.env.OMP_AUTH_BROKER_SNAPSHOT_TTL_MS;
+	const raw = resolveEnvValue("PI_AUTH_BROKER_SNAPSHOT_TTL_MS", "OMP_AUTH_BROKER_SNAPSHOT_TTL_MS");
 	if (raw === undefined) return DEFAULT_SNAPSHOT_CACHE_TTL_MS;
-	const value = raw.trim();
-	if (value === "") return DEFAULT_SNAPSHOT_CACHE_TTL_MS;
-	const ttlMs = Number(value);
+	const ttlMs = Number(raw);
 	if (Number.isFinite(ttlMs) && ttlMs >= 0) return ttlMs;
-	logger.warn("Invalid OMP_AUTH_BROKER_SNAPSHOT_TTL_MS; using default", { value: raw });
+	logger.warn("Invalid PI_AUTH_BROKER_SNAPSHOT_TTL_MS (or legacy OMP_AUTH_BROKER_SNAPSHOT_TTL_MS); using default", {
+		value: raw,
+	});
 	return DEFAULT_SNAPSHOT_CACHE_TTL_MS;
 }
 
 /**
  * Resolve broker connection configuration using the same precedence as the TUI:
  *
- * 1. `OMP_AUTH_BROKER_URL` / `OMP_AUTH_BROKER_TOKEN` env vars.
+ * 1. `PI_AUTH_BROKER_URL` / `PI_AUTH_BROKER_TOKEN` env vars, with `OMP_*` legacy fallback.
  * 2. `auth.broker.url` / `auth.broker.token` in `<agentDir>/config.yml`.
  * 3. `<config-root>/auth-broker.token` file (paired with a URL from env/config).
  *
@@ -117,10 +124,10 @@ export async function resolveAuthBrokerConfig(
 	const agentDir = options.agentDir ?? getAgentDir();
 	const resolveConfig = options.configValueResolver ?? defaultResolveConfigValue;
 
-	const envUrl = process.env.OMP_AUTH_BROKER_URL;
-	const envToken = process.env.OMP_AUTH_BROKER_TOKEN;
+	const envUrl = resolveEnvValue("PI_AUTH_BROKER_URL", "OMP_AUTH_BROKER_URL");
+	const envToken = resolveEnvValue("PI_AUTH_BROKER_TOKEN", "OMP_AUTH_BROKER_TOKEN");
 
-	let url = envUrl && envUrl.length > 0 ? envUrl : undefined;
+	let url = envUrl;
 	let configToken: string | undefined;
 	if (!url || !envToken) {
 		const fromConfig = await readConfigYaml(agentDir);
@@ -135,13 +142,12 @@ export async function resolveAuthBrokerConfig(
 	}
 	if (!url) return null;
 
-	const token =
-		(envToken && envToken.length > 0 ? envToken : undefined) ?? configToken ?? (await readTokenFile()) ?? undefined;
+	const token = envToken ?? configToken ?? (await readTokenFile()) ?? undefined;
 	if (!token) {
 		throw new AIError.MissingApiKeyError(
 			undefined,
-			`OMP_AUTH_BROKER_URL is set (${url}) but no bearer token is available. ` +
-				`Set OMP_AUTH_BROKER_TOKEN, the \`auth.broker.token\` config entry, or place one at ${getAuthBrokerTokenFilePath()}.`,
+			`Auth broker URL is configured (${url}) but no bearer token is available. ` +
+				`Set PI_AUTH_BROKER_TOKEN (or legacy OMP_AUTH_BROKER_TOKEN), the \`auth.broker.token\` config entry, or place one at ${getAuthBrokerTokenFilePath()}.`,
 		);
 	}
 	return { url, token };

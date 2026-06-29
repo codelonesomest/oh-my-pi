@@ -302,31 +302,42 @@ describe("GrepTool internal URL resolution", () => {
 		);
 	});
 
-	it("expands omp:// root to grep embedded documentation files", async () => {
+	it("rejects an RE2-unsupported pattern on a pure-virtual search (dialect parity)", async () => {
+		registerVirtualDocs(new Map([["doc.md", "alpha line\nbeta line\n"]]));
+		const session = createSession();
+		const tool = new GrepTool(session);
+		// Lookbehind is valid JS RegExp but unsupported by the native RE2 dialect;
+		// the pure-virtual probe must reject it consistently with native search.
+		await expect(tool.execute("re2", { pattern: "(?<=alpha)line", paths: ["virtual://doc.md"] })).rejects.toThrow(
+			/Invalid regex/i,
+		);
+	});
+
+	it("expands pi:// root to grep embedded documentation files", async () => {
 		const session = createSession();
 		const tool = new GrepTool(session);
 
 		const result = await tool.execute("test-call", {
 			pattern: "Grep file contents with a regex across files",
-			paths: ["omp://"],
+			paths: ["pi://"],
 		});
 
 		const text = getResultText(result);
-		expect(text).toContain("# omp://tools/grep.md");
+		expect(text).toContain("# pi://tools/grep.md");
 		expect(text).toContain("Grep file contents with a regex across files");
 	});
 
-	it("expands omp://docs to grep embedded documentation files", async () => {
+	it("expands pi://docs to grep embedded documentation files", async () => {
 		const session = createSession();
 		const tool = new GrepTool(session);
 
 		const result = await tool.execute("test-call", {
 			pattern: "Read files, directories, archives",
-			paths: ["omp://docs"],
+			paths: ["pi://docs"],
 		});
 
 		const text = getResultText(result);
-		expect(text).toContain("# omp://tools/read.md");
+		expect(text).toContain("# pi://tools/read.md");
 		expect(text).toContain("Read files, directories, archives");
 	});
 

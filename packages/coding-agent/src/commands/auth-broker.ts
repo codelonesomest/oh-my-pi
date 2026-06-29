@@ -1,5 +1,5 @@
 /**
- * `omp auth-broker` — manage the omp credential vault.
+ * `pi auth-broker` — manage the pi credential vault.
  */
 import { Args, Command, Flags, renderCommandHelp } from "@oh-my-pi/pi-utils/cli";
 import {
@@ -11,7 +11,7 @@ import {
 import { initTheme } from "../modes/theme/theme";
 
 export default class AuthBroker extends Command {
-	static description = "Manage the omp auth-broker (credential vault)";
+	static description = "Manage the pi auth-broker (credential vault)";
 
 	static args = {
 		action: Args.string({
@@ -52,26 +52,26 @@ export default class AuthBroker extends Command {
 	};
 
 	static examples = [
-		"# Boot the broker against the local SQLite store\n  omp auth-broker serve",
-		"# Boot on a non-default port\n  omp auth-broker serve --bind=127.0.0.1:9000",
-		"# Print the bearer token\n  omp auth-broker token",
-		"# Rotate the bearer token\n  omp auth-broker token --regenerate",
-		"# List supported OAuth providers\n  omp auth-broker list",
-		"# Local login (run on the broker host)\n  omp auth-broker login anthropic",
-		"# Interactive provider selection\n  omp auth-broker login",
-		"# Remote login over SSH tunnel\n  omp auth-broker login anthropic --via=user@broker",
-		"# Log out of a provider (interactive without provider arg)\n  omp auth-broker logout anthropic",
-		"# Import a CLIProxyAPI auth dump\n  omp auth-broker import ~/.cliproxy/auth",
-		"# Import a single CLIProxyAPI JSON, overriding the provider mapping\n  omp auth-broker import ~/.cliproxy/auth/claude-foo.json --provider anthropic",
-		"# Preview a migration from local store + env vars to the configured broker\n  omp auth-broker migrate --from-local --include-env --dry-run",
-		"# Apply the migration\n  omp auth-broker migrate --from-local --include-env",
-		"# Health-check the configured remote broker\n  omp auth-broker status",
+		"# Boot the broker against the local SQLite store\n  pi auth-broker serve",
+		"# Boot on a non-default port\n  pi auth-broker serve --bind=127.0.0.1:9000",
+		"# Print the bearer token\n  pi auth-broker token",
+		"# Rotate the bearer token\n  pi auth-broker token --regenerate",
+		"# List supported OAuth providers\n  pi auth-broker list",
+		"# Local login (run on the broker host)\n  pi auth-broker login anthropic",
+		"# Interactive provider selection\n  pi auth-broker login",
+		"# Remote login over SSH tunnel\n  pi auth-broker login anthropic --via=user@broker",
+		"# Log out of a provider (interactive without provider arg)\n  pi auth-broker logout anthropic",
+		"# Import a CLIProxyAPI auth dump\n  pi auth-broker import ~/.cliproxy/auth",
+		"# Import a single CLIProxyAPI JSON, overriding the provider mapping\n  pi auth-broker import ~/.cliproxy/auth/claude-foo.json --provider anthropic",
+		"# Preview a migration from local store + env vars to the configured broker\n  pi auth-broker migrate --from-local --include-env --dry-run",
+		"# Apply the migration\n  pi auth-broker migrate --from-local --include-env",
+		"# Health-check the configured remote broker\n  pi auth-broker status",
 	];
 
 	async run(): Promise<void> {
 		const { args, flags } = await this.parse(AuthBroker);
 		if (!args.action) {
-			renderCommandHelp("omp", "auth-broker", AuthBroker);
+			renderCommandHelp("pi", "auth-broker", AuthBroker);
 			return;
 		}
 		const action = args.action as AuthBrokerAction;

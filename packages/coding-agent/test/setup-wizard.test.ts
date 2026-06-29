@@ -41,7 +41,21 @@ function testScene(id: string, minVersion: number, shouldRun?: () => boolean): S
 	};
 }
 
+const ORIGINAL_PI_SKIP_SETUP = Bun.env.PI_SKIP_SETUP;
+const ORIGINAL_OMP_SKIP_SETUP = Bun.env.OMP_SKIP_SETUP;
+
+function restoreSetupEnv(name: "PI_SKIP_SETUP" | "OMP_SKIP_SETUP", value: string | undefined): void {
+	const env = Bun.env as Record<string, string | undefined>;
+	if (value === undefined) {
+		delete env[name];
+		return;
+	}
+	env[name] = value;
+}
+
 afterEach(async () => {
+	restoreSetupEnv("PI_SKIP_SETUP", ORIGINAL_PI_SKIP_SETUP);
+	restoreSetupEnv("OMP_SKIP_SETUP", ORIGINAL_OMP_SKIP_SETUP);
 	await initTheme(false, "unicode", false, "titanium", "light");
 });
 
@@ -79,6 +93,25 @@ describe("setup wizard scene selection", () => {
 		expect(await selectSetupScenes(0, ALL_SCENES, ctx, { isTTY: true, resuming: true })).toEqual([]);
 		expect(await selectSetupScenes(0, ALL_SCENES, ctx, { isTTY: true, skipEnv: "1" })).toEqual([]);
 		expect(await selectSetupScenes(0, ALL_SCENES, ctx, { isTTY: true, setupWizardEnabled: false })).toEqual([]);
+	});
+
+	it("uses PI_SKIP_SETUP before legacy OMP_SKIP_SETUP", async () => {
+		const env = Bun.env as Record<string, string | undefined>;
+		env.PI_SKIP_SETUP = "0";
+		env.OMP_SKIP_SETUP = "1";
+
+		const scenes = await selectSetupScenes(0, ALL_SCENES, fakeContextWithConfiguredModel(), { isTTY: true });
+		expect(scenes.map(scene => scene.id)).toEqual(ALL_SCENES.map(scene => scene.id));
+	});
+
+	it("uses legacy OMP_SKIP_SETUP when PI_SKIP_SETUP is unset or empty", async () => {
+		const env = Bun.env as Record<string, string | undefined>;
+		delete env.PI_SKIP_SETUP;
+		env.OMP_SKIP_SETUP = "1";
+		expect(await selectSetupScenes(0, ALL_SCENES, fakeContextWithConfiguredModel(), { isTTY: true })).toEqual([]);
+
+		env.PI_SKIP_SETUP = "   ";
+		expect(await selectSetupScenes(0, ALL_SCENES, fakeContextWithConfiguredModel(), { isTTY: true })).toEqual([]);
 	});
 
 	it("keeps the providers scene eligible even when a model is already configured", async () => {
@@ -380,7 +413,7 @@ describe("setup wizard web search tab", () => {
 	});
 });
 
-describe("omp setup onboarding trigger", () => {
+describe("pi setup onboarding trigger", () => {
 	it("starts the normal interactive command with forced setup wizard", async () => {
 		let forceSetupWizard: boolean | undefined;
 		await runOnboardingSetup({

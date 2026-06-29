@@ -62,24 +62,17 @@ describe("getResolvedThemeColors HTML export defaults", () => {
 		expect(colors.userMessageText).toBe("#e5e5e7");
 	});
 	let tempAgentDir: string | undefined;
-	let originalAgentDir = "";
-	let originalAgentDirEnv: string | undefined;
+	let originalAgentDir: string;
 
 	afterEach(async () => {
 		if (tempAgentDir === undefined) return;
 		setAgentDir(originalAgentDir);
-		if (originalAgentDirEnv === undefined) {
-			delete process.env.PI_CODING_AGENT_DIR;
-		} else {
-			process.env.PI_CODING_AGENT_DIR = originalAgentDirEnv;
-		}
 		await removeWithRetries(tempAgentDir);
 		tempAgentDir = undefined;
 	});
 
 	it("uses light text when a light-status custom theme derives dark export surfaces from userMessageBg", async () => {
 		originalAgentDir = getAgentDir();
-		originalAgentDirEnv = process.env.PI_CODING_AGENT_DIR;
 		tempAgentDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-theme-export-"));
 		setAgentDir(tempAgentDir);
 

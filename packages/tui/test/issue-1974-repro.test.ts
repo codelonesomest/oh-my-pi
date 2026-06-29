@@ -40,7 +40,7 @@ class LineList implements Component {
 }
 
 /**
- * Minimal append-only live region. Models the real omp setup where
+ * Minimal append-only live region. Models the real pi setup where
  * `TranscriptContainer` wraps an `AssistantMessageComponent` that reports
  * itself as `isTranscriptBlockAppendOnly() === true`.
  */
@@ -245,7 +245,7 @@ describe("issue #1974: tmux scrollback rendering", () => {
 	});
 
 	it("does not push chrome below the live block into pane history", async () => {
-		// Models a real omp frame: streamed assistant reply on top, persistent
+		// Models a real pi frame: streamed assistant reply on top, persistent
 		// chrome (status line / editor) below. The live region ends mid-frame,
 		// so the renderer must push only sealed rows of the live block into
 		// pane history while keeping the chrome rows transient and confined to

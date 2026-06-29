@@ -1,6 +1,6 @@
 /**
  * Main-module path declared by self-dispatching CLI entrypoints — entries
- * whose top-level argv handling routes hidden `__omp_*` worker selectors.
+ * whose top-level argv handling routes hidden `__pi_*` worker selectors.
  * Worker spawn sites re-enter this module via `new Worker(entry, { argv })`,
  * so every distribution (source, npm bundle, compiled binary) needs exactly
  * one JavaScript entrypoint. Never set under `bun test`, SDK embedding, or

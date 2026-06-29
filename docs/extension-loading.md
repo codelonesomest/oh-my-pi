@@ -30,16 +30,15 @@ Extension loading builds a list of module entry files, imports each module with 
 
 Native `extension-module` discovery comes from:
 
-- Project directory: `<cwd>/.omp/extensions`
-- User directory: `~/.omp/agent/extensions`
-- Native legacy/settings JSON entries: `<cwd>/.omp/settings.json#extensions` and `~/.omp/agent/settings.json#extensions`
+- Project directory: `<cwd>/.pi/extensions`
+- User directory: `~/.pi/agent/extensions`
+- Native settings JSON entries: `<cwd>/.pi/settings.json#extensions` and `~/.pi/agent/settings.json#extensions`
 
-The project root is the native provider's `.omp` directory (`SOURCE_PATHS.native.projectDir`), cwd-only; it does not walk ancestors. The user root is the active profile's agent directory via `getAgentDir()`, so under `omp --profile <name>` it becomes `~/.omp/profiles/<name>/agent/extensions` (and it honors `PI_CODING_AGENT_DIR`). See [Profiles](./config-usage.md#profiles).
+The project root is the native provider's `.pi` directory (`SOURCE_PATHS.native.projectDir`), cwd-only; it does not walk ancestors. The user root is the active profile's agent directory via `getAgentDir()`, so under `pi --profile <name>` it becomes `~/.pi/profiles/<name>/agent/extensions` . See [Profiles](./config-usage.md#profiles).
 
 Notes:
 
-- Native auto-discovery is currently `.omp` based.
-- Legacy `.pi` is still accepted in package manifests (`pi.extensions`) and project override lookup, but `.pi/extensions` is not a native root here.
+- Native auto-discovery is `.pi` based.
 
 ### 2) Discovered JS/TS hook factories
 
@@ -51,7 +50,7 @@ Hook-capability loading already applies its own hook-specific disabled ids, so t
 
 After hook discovery, `discoverAndLoadExtensions()` appends extension entry points from enabled installed plugins via `getAllPluginExtensionPaths(cwd)`.
 
-Plugin extension entries come from package `omp.extensions` / `pi.extensions` manifests, including enabled feature entries.
+Plugin extension entries come from package `pi.extensions` manifests, including enabled feature entries.
 
 ### 4) Explicitly configured paths
 
@@ -64,18 +63,18 @@ Configured path sources in the main session startup path (`sdk.ts`):
 
 Settings files:
 
-- User: `~/.omp/agent/config.yml` (or custom agent dir via `PI_CODING_AGENT_DIR`)
-- Project/native settings capability: `<cwd>/.omp/config.yml` and `<cwd>/.omp/settings.json`
+- User: `~/.pi/agent/config.yml` (or the active profile's agent dir)
+- Project/native settings capability: `<cwd>/.pi/config.yml` and `<cwd>/.pi/settings.json`
 
 Native extension-module discovery also reads legacy JSON extension lists from:
 
-- `~/.omp/agent/settings.json`
-- `<cwd>/.omp/settings.json`
+- `~/.pi/agent/settings.json`
+- `<cwd>/.pi/settings.json`
 
 Examples:
 
 ```yaml
-# ~/.omp/agent/config.yml
+# ~/.pi/agent/config.yml
 extensions:
   - ~/my-exts/safety.ts
   - ./local/ext-pack
@@ -83,7 +82,7 @@ extensions:
 
 ```json
 {
-  "extensions": ["./.omp/extensions/my-extra"]
+  "extensions": ["./.pi/extensions/my-extra"]
 }
 ```
 
@@ -139,13 +138,13 @@ It is used directly as a module entry candidate.
 
 Resolution order:
 
-1. `package.json` in that directory with `omp.extensions` (or legacy `pi.extensions`) -> use declared entries
+1. `package.json` in that directory with `pi.extensions` -> use declared entries
 2. `index.ts`
 3. `index.js`
 4. Otherwise scan one level for extension entries:
    - direct `*.ts` / `*.js`
    - subdir `index.ts` / `index.js`
-   - subdir `package.json` with `omp.extensions` / `pi.extensions`
+   - subdir `package.json` with `pi.extensions`
 
 Rules and constraints:
 
@@ -230,7 +229,7 @@ When events run through `ExtensionRunner`, handler exceptions are caught and emi
 ### User-level
 
 ```text
-~/.omp/agent/
+~/.pi/agent/
   config.yml
   extensions/
     guardrails.ts
@@ -242,7 +241,7 @@ When events run through `ExtensionRunner`, handler exceptions are caught and emi
 
 ```text
 <repo>/
-  .omp/
+  .pi/
     settings.json
     extensions/
       checks/
@@ -254,18 +253,8 @@ When events run through `ExtensionRunner`, handler exceptions are caught and emi
 
 ```json
 {
-  "omp": {
-    "extensions": ["./src/check-a.ts", "./src/check-b.js"]
-  }
-}
-```
-
-Legacy manifest key still accepted:
-
-```json
-{
   "pi": {
-    "extensions": ["./index.ts"]
+    "extensions": ["./src/check-a.ts", "./src/check-b.js"]
   }
 }
 ```

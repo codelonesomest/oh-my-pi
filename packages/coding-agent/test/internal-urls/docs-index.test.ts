@@ -4,7 +4,7 @@ import { decodeDocsIndex } from "@oh-my-pi/pi-coding-agent/internal-urls/docs-in
 
 // The embed path only runs in compiled binaries / the npm bundle; dev tests
 // otherwise exercise the disk fallback (empty placeholder), so a regression in
-// the two-line `<filenames>\n<gzip bodies>` parsing would ship broken `omp://`
+// the two-line `<filenames>\n<gzip bodies>` parsing would ship broken `pi://`
 // docs undetected. These cover the populated-embed decode directly.
 describe("decodeDocsIndex (embedded docs path)", () => {
 	const files = ["agent.md", "tools/read.md"];

@@ -202,14 +202,21 @@ async function withEnvPatch<T>(patch: Record<string, string | undefined>, run: (
 describe("TUI terminal-state regressions", () => {
 	let monotonicNow = 0;
 	let savedTerminalEnv: Record<string, string | undefined> = {};
+	const DIRECT_TERMINAL_ENV_KEYS = [
+		"TERM_PROGRAM",
+		"PI_TUI_RESIZE_IN_PLACE",
+		"CMUX_WORKSPACE_ID",
+		"CMUX_SURFACE_ID",
+	] as const;
 	// Keep TUI's ~33ms render throttle deterministic without sleeping a real frame per render.
 
 	beforeEach(() => {
 		monotonicNow = 0;
 		// Resize classification now depends on TERM_PROGRAM (Warp takes the
-		// in-place path), so neutralize the ambient terminal identity to keep
-		// these direct-terminal assertions deterministic on any dev machine.
-		for (const key of ["TERM_PROGRAM", "PI_TUI_RESIZE_IN_PLACE"]) {
+		// in-place path), and cmux surface/workspace ids mark a multiplexer session,
+		// so neutralize the ambient terminal identity to keep these direct-terminal
+		// assertions deterministic on any dev machine.
+		for (const key of DIRECT_TERMINAL_ENV_KEYS) {
 			savedTerminalEnv[key] = Bun.env[key];
 			delete Bun.env[key];
 		}
@@ -220,7 +227,7 @@ describe("TUI terminal-state regressions", () => {
 	});
 
 	afterEach(() => {
-		for (const key in savedTerminalEnv) {
+		for (const key of DIRECT_TERMINAL_ENV_KEYS) {
 			const value = savedTerminalEnv[key];
 			if (value === undefined) delete Bun.env[key];
 			else Bun.env[key] = value;
@@ -1322,14 +1329,14 @@ describe("TUI terminal-state regressions", () => {
 			for (let r = 0; r < 6; r++) term.write(`STALE-ROW-${r} leftover content\r\n`);
 			await term.flush();
 			const tui = new TUI(term);
-			tui.addChild(new MutableLinesComponent(["omp line 1", "omp line 2"]));
+			tui.addChild(new MutableLinesComponent(["pi line 1", "pi line 2"]));
 
 			try {
 				tui.start();
 				await settle(term);
 				const viewport = term.getViewport().join("\n");
 				expect(viewport).not.toContain("STALE-ROW");
-				expect(viewport).toContain("omp line 1");
+				expect(viewport).toContain("pi line 1");
 			} finally {
 				tui.stop();
 				setTerminalScreenToScrollback(saved);
@@ -4154,7 +4161,18 @@ describe("TUI terminal-state regressions", () => {
 });
 
 describe("foreground-tool streaming on ED3-risk terminals", () => {
+	let savedTerminalEnv: Record<string, string | undefined> = {};
+	const DIRECT_TERMINAL_ENV_KEYS = [
+		"TERM_PROGRAM",
+		"PI_TUI_RESIZE_IN_PLACE",
+		"CMUX_WORKSPACE_ID",
+		"CMUX_SURFACE_ID",
+	] as const;
 	beforeEach(() => {
+		for (const key of DIRECT_TERMINAL_ENV_KEYS) {
+			savedTerminalEnv[key] = Bun.env[key];
+			delete Bun.env[key];
+		}
 		let monotonicNow = 0;
 		vi.spyOn(performance, "now").mockImplementation(() => {
 			monotonicNow += 20;
@@ -4163,6 +4181,12 @@ describe("foreground-tool streaming on ED3-risk terminals", () => {
 	});
 
 	afterEach(() => {
+		for (const key of DIRECT_TERMINAL_ENV_KEYS) {
+			const value = savedTerminalEnv[key];
+			if (value === undefined) delete Bun.env[key];
+			else Bun.env[key] = value;
+		}
+		savedTerminalEnv = {};
 		vi.restoreAllMocks();
 	});
 

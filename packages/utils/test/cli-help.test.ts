@@ -10,7 +10,7 @@ class GoodCommand extends Command {
 }
 
 describe("run() per-command help", () => {
-	// Contract: `omp <cmd> --help` must load only the requested command module.
+	// Contract: `pi <cmd> --help` must load only the requested command module.
 	// Loading the whole table would let any unrelated command whose import
 	// hangs or crashes take down every per-command help invocation.
 	it("loads only the requested command", async () => {
@@ -31,7 +31,7 @@ describe("run() per-command help", () => {
 			return true;
 		});
 		try {
-			await run({ bin: "omp", version: "0.0.0", argv: ["good", "--help"], commands });
+			await run({ bin: "pi", version: "0.0.0", argv: ["good", "--help"], commands });
 		} finally {
 			stdoutSpy.mockRestore();
 		}

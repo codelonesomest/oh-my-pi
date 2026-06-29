@@ -80,11 +80,11 @@ For compiled binaries, loader behavior is:
 
 1. Check versioned user cache path: `<getNativesDir()>/<packageVersion>/...`.
 2. Check legacy compiled-binary location:
-   - Windows: `%LOCALAPPDATA%/omp` (fallback `%USERPROFILE%/AppData/Local/omp`)
+   - Windows: `%LOCALAPPDATA%/pi` (fallback `%USERPROFILE%/AppData/Local/pi`)
    - non-Windows: `~/.local/bin`
 3. Fall back to packaged `native/` and executable directory candidates.
 
-`getNativesDir()` uses `$XDG_DATA_HOME/omp/natives` when `$XDG_DATA_HOME/omp` exists; otherwise it uses `~/.omp/natives`.
+`getNativesDir()` uses `$XDG_DATA_HOME/pi/natives` when `$XDG_DATA_HOME/pi` exists; otherwise it uses `~/.pi/natives`.
 
 If a populated embedded addon manifest is present, it is also treated as a compiled-binary signal. Current embedded manifests point at a gzip-compressed tar archive (`embedded-addons.<tag>.tar.gz`) that contains one or more matching `.node` files. The loader extracts the archive into the versioned cache directory, validates the selected file by size, and prepends that cache path before normal candidate probing.
 

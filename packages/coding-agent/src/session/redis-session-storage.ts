@@ -30,7 +30,7 @@ export interface RedisSessionStorageOptions {
 	/** A connected `bun:redis` RedisClient (or any compatible adapter). */
 	client: RedisSessionStorageClient;
 	/**
-	 * Key prefix applied to every Redis key this storage owns. Default `omp:sessions:`.
+	 * Key prefix applied to every Redis key this storage owns. Default `pi:sessions:`.
 	 * Trailing colon is preserved verbatim — set to a project-scoped prefix to share
 	 * one Redis instance between multiple agents.
 	 */
@@ -42,7 +42,7 @@ export interface RedisSessionStorageOptions {
 	scanCount?: number;
 }
 
-const DEFAULT_PREFIX = "omp:sessions:";
+const DEFAULT_PREFIX = "pi:sessions:";
 const DEFAULT_SCAN_COUNT = 500;
 
 function encodeTitleMeta(title: SessionTitleUpdate): string {

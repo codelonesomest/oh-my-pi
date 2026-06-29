@@ -40,6 +40,7 @@ const TASK_COMMANDS = {
 type RustTaskName = keyof typeof TASK_COMMANDS;
 
 const repoRoot = path.join(import.meta.dir, "..");
+const rustupToolchain = "nightly-2026-04-29";
 const cargoBinary = await resolveCargoBinary();
 const taskName = process.argv[2];
 
@@ -126,8 +127,8 @@ async function resolveCargoBinary(): Promise<string> {
 	// On macOS runners, Homebrew's `rustup-init` binary is on PATH before the
 	// rustup proxies in `$CARGO_HOME/bin`, and invoking it as `cargo` falls
 	// through to its installer mode ("unexpected argument 'nextest' found").
-	// Ask rustup directly for the cargo binary in the active toolchain.
-	const result = await $`rustup which cargo`.cwd(repoRoot).quiet().nothrow();
+	// Ask rustup directly for the cargo binary in the repo-pinned toolchain.
+	const result = await $`rustup which --toolchain ${rustupToolchain} cargo`.cwd(repoRoot).quiet().nothrow();
 	if (result.exitCode === 0) {
 		const resolved = result.stdout.toString().trim();
 		if (resolved !== "") return resolved;
@@ -141,6 +142,7 @@ async function runCommand(command: readonly string[]): Promise<number> {
 	const argv = isCargo ? [cargoBinary, ...rest] : [head, ...rest];
 	const env: Record<string, string> = { ...(process.env as Record<string, string>) };
 	if (isCargo) {
+		env.RUSTUP_TOOLCHAIN = rustupToolchain;
 		// Cargo subprocesses (notably `rustc -vV` from `cargo metadata`) resolve
 		// via PATH; ensure the active toolchain bin dir wins over Homebrew's
 		// rustup-init shadow on macOS runners.
