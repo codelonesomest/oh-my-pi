@@ -150,7 +150,7 @@ describe("global --profile flag", () => {
 		expect(result.exitCode).toBe(0);
 		expect(result.stdout).toContain("Created pi-work");
 		expect(result.stdout).not.toContain(`${APP_NAME}/${VERSION}`);
-		const bashProfile = await Bun.file(path.join(tempHome, ".bash_profile")).text();
+        const bashProfile = await Bun.file(path.join(tempHome, process.platform === "darwin" ? ".bash_profile" : ".bashrc")).text();
 		expect(bashProfile).toContain("# >>> pi profile alias: pi-work >>>");
 		expect(bashProfile).toContain("--profile=work");
 	});
@@ -206,7 +206,7 @@ describe("global --profile flag", () => {
 		});
 
 		expect(result.exitCode).toBe(0);
-		const bashProfile = await Bun.file(path.join(tempHome, ".bash_profile")).text();
+        const bashProfile = await Bun.file(path.join(tempHome, process.platform === "darwin" ? ".bash_profile" : ".bashrc")).text();
 		expect(bashProfile).toContain("# >>> pi profile alias: pi-work >>>");
 		expect(bashProfile).toContain("--profile=work");
 		expect(bashProfile).not.toContain("default");

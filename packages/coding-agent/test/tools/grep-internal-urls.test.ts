@@ -302,15 +302,15 @@ describe("GrepTool internal URL resolution", () => {
 		);
 	});
 
-	it("rejects an RE2-unsupported pattern on a pure-virtual search (dialect parity)", async () => {
+	it("treats an RE2-unsupported pattern on a pure-virtual search as a literal no-match", async () => {
 		registerVirtualDocs(new Map([["doc.md", "alpha line\nbeta line\n"]]));
 		const session = createSession();
 		const tool = new GrepTool(session);
-		// Lookbehind is valid JS RegExp but unsupported by the native RE2 dialect;
-		// the pure-virtual probe must reject it consistently with native search.
-		await expect(tool.execute("re2", { pattern: "(?<=alpha)line", paths: ["virtual://doc.md"] })).rejects.toThrow(
-			/Invalid regex/i,
-		);
+
+		const result = await tool.execute("re2", { pattern: "(?<=alpha)line", paths: ["virtual://doc.md"] });
+
+		expect(result.details?.matchCount).toBe(0);
+		expect(getResultText(result)).toContain("No matches found");
 	});
 
 	it("expands pi:// root to grep embedded documentation files", async () => {
