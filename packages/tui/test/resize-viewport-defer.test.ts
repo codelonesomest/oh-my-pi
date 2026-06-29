@@ -21,6 +21,8 @@ const NO_MULTIPLEXER_ENV: Record<string, string | undefined> = {
 	TMUX: undefined,
 	STY: undefined,
 	ZELLIJ: undefined,
+	CMUX_WORKSPACE_ID: undefined,
+	CMUX_SURFACE_ID: undefined,
 	// Pin terminal identity so the alt-screen fast-path assertions below are
 	// deterministic even when the suite runs inside Warp (which otherwise takes
 	// the in-place path — see the Warp describe block at the bottom).

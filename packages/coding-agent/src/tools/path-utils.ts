@@ -37,7 +37,7 @@ const INTERNAL_SCHEMES_WITH_SELECTORS: Record<string, true> = {
 	issue: true,
 	local: true,
 	memory: true,
-	omp: true,
+	pi: true,
 	pr: true,
 	rule: true,
 	skill: true,
@@ -54,15 +54,20 @@ const OPAQUE_RESOURCE_SCHEMES: ReadonlySet<string> = new Set(["mcp"]);
 const INTERNAL_URL_SCHEME_RE = /^([a-z][a-z0-9+.-]*):\/\//i;
 const NARROW_NO_BREAK_SPACE = "\u202F";
 const TOP_LEVEL_INTERNAL_URL_PREFIXES = [
-	"agent://",
-	"artifact://",
-	"skill://",
-	"rule://",
-	"local://",
-	"mcp://",
-	"ssh://",
-	"vault://",
-] as const;
+		"agent://",
+		"artifact://",
+		"history://",
+		"issue://",
+		"local://",
+		"mcp://",
+		"memory://",
+		"pi://",
+		"pr://",
+		"rule://",
+		"skill://",
+		"ssh://",
+		"vault://",
+	] as const;
 
 function normalizeUnicodeSpaces(str: string): string {
 	return str.replace(UNICODE_SPACES, " ");
@@ -113,10 +118,15 @@ function normalizeAtPrefix(filePath: string): string {
 		// Internal URL shorthands
 		withoutAt.startsWith("agent://") ||
 		withoutAt.startsWith("artifact://") ||
-		withoutAt.startsWith("skill://") ||
-		withoutAt.startsWith("rule://") ||
+		withoutAt.startsWith("history://") ||
+		withoutAt.startsWith("issue://") ||
 		withoutAt.startsWith("local:") ||
-		withoutAt.startsWith("mcp://")
+		withoutAt.startsWith("mcp://") ||
+		withoutAt.startsWith("memory://") ||
+		withoutAt.startsWith("pi://") ||
+		withoutAt.startsWith("pr://") ||
+		withoutAt.startsWith("rule://") ||
+		withoutAt.startsWith("skill://")
 	) {
 		return withoutAt;
 	}
