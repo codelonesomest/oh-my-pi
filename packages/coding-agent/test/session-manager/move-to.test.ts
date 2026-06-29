@@ -7,7 +7,7 @@ import type { SessionHeader } from "@oh-my-pi/pi-coding-agent/session/session-en
 import { loadEntriesFromFile } from "@oh-my-pi/pi-coding-agent/session/session-loader";
 import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
 import { stripOuterDoubleQuotes } from "@oh-my-pi/pi-coding-agent/tools/path-utils";
-import { getConfigRootDir, setAgentDir } from "@oh-my-pi/pi-utils";
+import { getAgentDir, getConfigRootDir, setAgentDir } from "@oh-my-pi/pi-utils";
 
 // -- helpers ----------------------------------------------------------------
 
@@ -63,7 +63,7 @@ describe("SessionManager.moveTo", () => {
 	let testAgentDir: string;
 	let cwdA: string;
 	let cwdB: string;
-	const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
+	const originalAgentDir = getAgentDir();
 	const fallbackAgentDir = path.join(getConfigRootDir(), "agent");
 
 	beforeEach(async () => {
@@ -80,7 +80,6 @@ describe("SessionManager.moveTo", () => {
 			setAgentDir(originalAgentDir);
 		} else {
 			setAgentDir(fallbackAgentDir);
-			delete process.env.PI_CODING_AGENT_DIR;
 		}
 		await fsp.rm(testAgentDir, { recursive: true, force: true });
 	});

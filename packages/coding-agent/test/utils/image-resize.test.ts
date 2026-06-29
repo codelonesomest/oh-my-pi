@@ -217,32 +217,53 @@ describe("resizeImage minimum dimension", () => {
 });
 
 describe("resizeImage env wiring", () => {
-	const prior = Bun.env.OMP_NO_WEBP;
+	const priorPi = Bun.env.PI_NO_WEBP;
+	const priorOmp = Bun.env.OMP_NO_WEBP;
+	const env = Bun.env as Record<string, string | undefined>;
+
+	function restoreEnv(name: "PI_NO_WEBP" | "OMP_NO_WEBP", value: string | undefined): void {
+		if (value === undefined) {
+			delete env[name];
+			return;
+		}
+		env[name] = value;
+	}
 
 	beforeEach(() => {
-		delete (Bun.env as Record<string, string | undefined>).OMP_NO_WEBP;
+		delete env.PI_NO_WEBP;
+		delete env.OMP_NO_WEBP;
 	});
 
 	afterEach(() => {
-		if (prior === undefined) delete (Bun.env as Record<string, string | undefined>).OMP_NO_WEBP;
-		else Bun.env.OMP_NO_WEBP = prior;
+		restoreEnv("PI_NO_WEBP", priorPi);
+		restoreEnv("OMP_NO_WEBP", priorOmp);
 	});
 
-	it("treats OMP_NO_WEBP=1 set at call time as exclusion (not baked at module load)", async () => {
-		Bun.env.OMP_NO_WEBP = "1";
+	it("treats PI_NO_WEBP=1 set at call time as exclusion before legacy OMP_NO_WEBP", async () => {
+		env.PI_NO_WEBP = "1";
+		env.OMP_NO_WEBP = "0";
 
 		const result = await resizeImage({ type: "image", data: smallWebp, mimeType: "image/webp" });
 
 		expect(result.mimeType).not.toBe("image/webp");
 	});
 
-	it("treats OMP_NO_WEBP='' / '0' as NOT excluded", async () => {
-		Bun.env.OMP_NO_WEBP = "";
-		const empty = await resizeImage({ type: "image", data: smallWebp, mimeType: "image/webp" });
-		expect(empty.mimeType).toBe("image/webp");
+	it("uses legacy OMP_NO_WEBP when PI_NO_WEBP is unset or empty", async () => {
+		env.OMP_NO_WEBP = "1";
+		const unset = await resizeImage({ type: "image", data: smallWebp, mimeType: "image/webp" });
+		expect(unset.mimeType).not.toBe("image/webp");
 
-		Bun.env.OMP_NO_WEBP = "0";
-		const zero = await resizeImage({ type: "image", data: smallWebp, mimeType: "image/webp" });
-		expect(zero.mimeType).toBe("image/webp");
+		env.PI_NO_WEBP = "   ";
+		const empty = await resizeImage({ type: "image", data: smallWebp, mimeType: "image/webp" });
+		expect(empty.mimeType).not.toBe("image/webp");
+	});
+
+	it("treats PI_NO_WEBP=0 as NOT excluded even when legacy OMP_NO_WEBP is enabled", async () => {
+		env.PI_NO_WEBP = "0";
+		env.OMP_NO_WEBP = "1";
+
+		const result = await resizeImage({ type: "image", data: smallWebp, mimeType: "image/webp" });
+
+		expect(result.mimeType).toBe("image/webp");
 	});
 });

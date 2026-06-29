@@ -34,8 +34,8 @@ describe("HookSelectorComponent", () => {
 
 	it("wraps outlined option text without omitting the tail", () => {
 		const options = [
-			"Option A: Move to OMP-native only by migrating reusable shared AI instructions into .omp/AGENTS.md, .omp/rules, .omp/skills, and .omp/agents while deliberately not creating a root .github directory.",
-			"Option B: Keep dual support by migrating canonical instructions into .omp while also maintaining a root .github/copilot-instructions.md compatibility bridge for editors that do not understand OMP resources yet.",
+			"Option A: Move to Pi-native only by migrating reusable shared AI instructions into .pi/AGENTS.md, .pi/rules, .pi/skills, and .pi/agents while deliberately not creating a root .github directory.",
+			"Option B: Keep dual support by migrating canonical instructions into .pi while also maintaining a root .github/copilot-instructions.md compatibility bridge for editors that do not understand Pi resources yet.",
 		];
 		const component = new HookSelectorComponent(
 			"Which migration stance should be used?",
@@ -50,7 +50,7 @@ describe("HookSelectorComponent", () => {
 		const plain = lines.map(line => Bun.stripANSI(line)).join("\n");
 		const normalizedPlain = plain.replace(/[\u2500-\u257f]/g, " ").replace(/\s+/g, " ");
 		expect(normalizedPlain).toContain("not creating a root .github directory");
-		expect(normalizedPlain).toContain("do not understand OMP resources yet");
+		expect(normalizedPlain).toContain("do not understand Pi resources yet");
 		for (const line of lines) {
 			expect(visibleWidth(Bun.stripANSI(line))).toBeLessThanOrEqual(width);
 		}
@@ -61,7 +61,7 @@ describe("HookSelectorComponent", () => {
 			{
 				label: "Use existing local credentials",
 				description:
-					"Authenticate via the provider keys and OAuth state already configured under ~/.omp without opening a new browser-based setup flow.",
+					"Authenticate via the provider keys and OAuth state already configured under ~/.pi without opening a new browser-based setup flow.",
 			},
 			{
 				label: "Set up Oh My Pi in terminal",

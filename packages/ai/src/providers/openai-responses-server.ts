@@ -1,5 +1,5 @@
 /**
- * OpenAI Responses HTTP wire-format ↔ omp Context bridge for the auth-gateway.
+ * OpenAI Responses HTTP wire-format ↔ pi Context bridge for the auth-gateway.
  *
  * Inbound: parses `POST /v1/responses` request bodies into a {@link ParsedRequest}.
  * Outbound: encodes omp's {@link AssistantMessage} (and event stream) back into
@@ -1162,7 +1162,7 @@ export function encodeStream(
 									name: cur.name,
 								});
 							} else {
-								// Standard JSON tool: arguments object on the omp side, the
+								// Standard JSON tool: arguments object on the pi side, the
 								// wire wants the JSON string the model emitted (= streamed deltas).
 								const argsJson = cur.argsText || JSON.stringify(tc.arguments ?? {});
 								cur.argsText = argsJson;

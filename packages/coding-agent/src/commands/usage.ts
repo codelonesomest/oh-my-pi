@@ -23,11 +23,11 @@ export default class Usage extends Command {
 	};
 
 	static examples = [
-		"# Detailed per-account usage breakdown across all providers\n  omp usage",
-		"# Only Anthropic accounts\n  omp usage --provider anthropic",
-		"# Redact account identifiers for screenshots\n  omp usage --redact",
-		"# Machine-readable output\n  omp usage --json",
-		"# Usage-limit trend over the last 30 days\n  omp usage --history --days 30",
+		"# Detailed per-account usage breakdown across all providers\n  pi usage",
+		"# Only Anthropic accounts\n  pi usage --provider anthropic",
+		"# Redact account identifiers for screenshots\n  pi usage --redact",
+		"# Machine-readable output\n  pi usage --json",
+		"# Usage-limit trend over the last 30 days\n  pi usage --history --days 30",
 	];
 
 	async run(): Promise<void> {

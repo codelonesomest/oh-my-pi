@@ -2,8 +2,8 @@
   "type": "module",
   "name": "@oh-my-pi/pi-catalog",
   "version": "16.2.2",
-  "description": "Model catalog for omp: bundled model database, provider discovery descriptors, model identity, classification, and equivalence",
-  "homepage": "https://omp.sh",
+  "description": "Model catalog for pi: bundled model database, provider discovery descriptors, model identity, classification, and equivalence",
+  "homepage": "https://pi.sh",
   "author": "Can Boluk",
   "license": "MIT",
   "repository": {

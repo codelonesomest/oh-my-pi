@@ -493,7 +493,7 @@ export class PluginManager {
 			// Step 2: refresh the git lockfile pin when re-installing an existing
 			// git plugin. `bun install <spec>` is a no-op when the spec matches the
 			// lockfile entry — it never re-resolves the remote ref — so re-running
-			// `omp plugin install github:owner/repo` would silently keep the user on
+			// `pi plugin install github:owner/repo` would silently keep the user on
 			// the original resolved commit even after upstream moved (#3063).
 			// `bun update <name>` re-resolves the ref against the remote and
 			// rewrites the pin; SHA-pinned refs stay put because the commit can't
@@ -524,7 +524,7 @@ export class PluginManager {
 				}
 				throw err;
 			}
-			const manifest: PluginManifest = pkg.omp || pkg.pi || { version: pkg.version };
+			const manifest: PluginManifest = pkg.pi || pkg.pi || { version: pkg.version };
 			manifest.version = pkg.version;
 
 			// Resolve enabled features
@@ -650,7 +650,7 @@ export class PluginManager {
 				if (isEnoent(err)) continue;
 				throw err;
 			}
-			const manifest: PluginManifest = pluginPkg.omp || pluginPkg.pi || { version: pluginPkg.version };
+			const manifest: PluginManifest = pluginPkg.pi || pluginPkg.pi || { version: pluginPkg.version };
 			manifest.version = pluginPkg.version;
 
 			const runtimeState = config.plugins[name] || {
@@ -715,7 +715,7 @@ export class PluginManager {
 
 		await fs.promises.symlink(absolutePath, linkPath);
 
-		const manifest: PluginManifest = pkg.omp || pkg.pi || { version: pkg.version };
+		const manifest: PluginManifest = pkg.pi || pkg.pi || { version: pkg.version };
 		manifest.version = pkg.version;
 
 		// Add to runtime config
@@ -928,15 +928,15 @@ export class PluginManager {
 				}
 				throw err;
 			}
-			const hasManifest = !!(pluginPkg.omp || pluginPkg.pi);
-			const manifest: PluginManifest | undefined = pluginPkg.omp || pluginPkg.pi;
+			const hasManifest = !!(pluginPkg.pi || pluginPkg.pi);
+			const manifest: PluginManifest | undefined = pluginPkg.pi || pluginPkg.pi;
 
 			checks.push({
 				name: `plugin:${name}`,
 				status: hasManifest ? "ok" : "warning",
 				message: hasManifest
 					? `v${pluginPkg.version}${pluginPkg.description ? ` - ${pluginPkg.description}` : ""}`
-					: `v${pluginPkg.version} - No omp/pi manifest (not an omp plugin)`,
+					: `v${pluginPkg.version} - No omp/pi manifest (not an pi plugin)`,
 			});
 
 			// Check tools path exists if specified

@@ -37,7 +37,7 @@ export interface RuntimeOptions {
 	initialCwd: string;
 	sessionId: string;
 	/**
-	 * Extra globals installed alongside `__omp_helpers__` / prelude. Use for stable, lifetime-
+	 * Extra globals installed alongside `__pi_helpers__` / prelude. Use for stable, lifetime-
 	 * of-the-worker bindings (e.g. browser's `page`, `browser`). Per-run scope should be set
 	 * via `setRunScope()` instead.
 	 */
@@ -56,7 +56,7 @@ const BASE64_STRICT_RE = /^[A-Za-z0-9+/]+={0,2}$/;
 const DECIMAL_CSV_RE = /^\d{1,3}(?:,\d{1,3})*$/;
 
 const PRELUDE_GLOBAL_KEYS = [
-	"__omp_js_prelude_loaded__",
+	"__pi_js_prelude_loaded__",
 	"console",
 	"print",
 	"display",
@@ -191,7 +191,7 @@ export class JsRuntime {
 	setCwd(cwd: string): void {
 		this.#activateGlobals("set cwd");
 		this.#cwd = cwd;
-		const session = (globalThis as { __omp_session__?: { cwd?: string } }).__omp_session__;
+		const session = (globalThis as { __pi_session__?: { cwd?: string } }).__pi_session__;
 		if (session) session.cwd = cwd;
 	}
 
@@ -319,38 +319,38 @@ export class JsRuntime {
 
 	#install(extraGlobals: Record<string, unknown> | undefined): void {
 		const injected: Record<string, unknown> = {
-			__omp_session__: { cwd: this.#cwd, sessionId: this.sessionId },
-			__omp_helpers__: this.helpers,
-			__omp_call_tool__: async (name: string, args: unknown) => {
+			__pi_session__: { cwd: this.#cwd, sessionId: this.sessionId },
+			__pi_helpers__: this.helpers,
+			__pi_call_tool__: async (name: string, args: unknown) => {
 				const hooks = this.#activeHooks("tool");
 				if (!hooks) return undefined;
 				return await hooks.callTool(name, args);
 			},
-			__omp_import__: async (source: string, options?: ImportCallOptions) => {
+			__pi_import__: async (source: string, options?: ImportCallOptions) => {
 				const resolved = await this.#moduleLoader.resolveForRun(this.#activeCwd(), source);
 				if (resolved.mode === "local") return resolved.value;
 				const target = resolved.target;
 				return options !== undefined ? await import(target, options) : await import(target);
 			},
-			__omp_import_from__: async (moduleUrl: string, source: string, options?: ImportCallOptions) => {
+			__pi_import_from__: async (moduleUrl: string, source: string, options?: ImportCallOptions) => {
 				const resolved = await this.#moduleLoader.resolveForModule(moduleUrl, source, this.#activeCwd());
 				if (resolved.mode === "local") return resolved.value;
 				const target = resolved.target;
 				return options !== undefined ? await import(target, options) : await import(target);
 			},
-			__omp_get_require__: (moduleUrl?: string) => this.#activeRequire(moduleUrl),
-			__omp_get_filename__: (moduleUrl?: string) => this.#moduleFilename(moduleUrl),
-			__omp_get_dirname__: (moduleUrl?: string) => this.#moduleDirname(moduleUrl),
-			__omp_emit_status__: (op: string, data: Record<string, unknown> = {}) => {
+			__pi_get_require__: (moduleUrl?: string) => this.#activeRequire(moduleUrl),
+			__pi_get_filename__: (moduleUrl?: string) => this.#moduleFilename(moduleUrl),
+			__pi_get_dirname__: (moduleUrl?: string) => this.#moduleDirname(moduleUrl),
+			__pi_emit_status__: (op: string, data: Record<string, unknown> = {}) => {
 				const event: JsStatusEvent = { op, ...data };
 				this.#activeHooks("emitStatus")?.onDisplay({ type: "status", event });
 			},
-			__omp_log__: (level: string, ...args: unknown[]) => {
+			__pi_log__: (level: string, ...args: unknown[]) => {
 				const prefix = level === "error" ? "[error] " : level === "warn" ? "[warn] " : "";
 				const text = `${prefix}${formatConsoleArgs(args)}`;
 				this.#activeHooks("log")?.onText(text.endsWith("\n") ? text : `${text}\n`);
 			},
-			__omp_table__: (...args: unknown[]) => {
+			__pi_table__: (...args: unknown[]) => {
 				const hooks = this.#activeHooks("table");
 				if (!hooks) return;
 				let buffer = "";
@@ -364,8 +364,8 @@ export class JsRuntime {
 				(tableConsole.table as (...a: unknown[]) => void)(...args);
 				hooks.onText(buffer.endsWith("\n") ? buffer : `${buffer}\n`);
 			},
-			__omp_display__: (value: unknown) => this.displayValue(value),
-			__omp_set_final_expr__: (value: unknown) => {
+			__pi_display__: (value: unknown) => this.displayValue(value),
+			__pi_set_final_expr__: (value: unknown) => {
 				const context = this.#als.getStore();
 				if (!context) {
 					logger.warn("js runtime final expression set outside an active run");

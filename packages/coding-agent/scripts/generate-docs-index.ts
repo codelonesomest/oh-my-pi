@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 /**
- * Populate (or reset) the embedded harness documentation index for `omp://`.
+ * Populate (or reset) the embedded harness documentation index for `pi://`.
  *
  * `--generate` writes `src/internal-urls/docs-index.generated.txt` as two lines:
  * a plain JSON array of the sorted `docs/**\/*.md` file names, then a base64

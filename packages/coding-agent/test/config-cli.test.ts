@@ -3,10 +3,10 @@ import * as path from "node:path";
 import { runConfigCommand } from "@oh-my-pi/pi-coding-agent/cli/config-cli";
 import { resetSettingsForTest } from "@oh-my-pi/pi-coding-agent/config/settings";
 import { AgentStorage } from "@oh-my-pi/pi-coding-agent/session/agent-storage";
-import { getConfigRootDir, setAgentDir, TempDir } from "@oh-my-pi/pi-utils";
+import { getAgentDir, getConfigRootDir, setAgentDir, TempDir } from "@oh-my-pi/pi-utils";
 
 let testAgentDir: TempDir | undefined;
-const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
+const originalAgentDir = getAgentDir();
 const fallbackAgentDir = path.join(getConfigRootDir(), "agent");
 
 beforeEach(() => {
@@ -23,7 +23,6 @@ afterEach(async () => {
 		setAgentDir(originalAgentDir);
 	} else {
 		setAgentDir(fallbackAgentDir);
-		delete process.env.PI_CODING_AGENT_DIR;
 	}
 	if (testAgentDir) {
 		try {

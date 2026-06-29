@@ -3,7 +3,7 @@
   "name": "@oh-my-pi/swarm-extension",
   "version": "16.2.2",
   "description": "Swarm orchestration extension for omp",
-  "homepage": "https://omp.sh",
+  "homepage": "https://pi.sh",
   "author": "Derek Rynd",
   "license": "MIT",
   "repository": {

@@ -3,7 +3,7 @@
   "name": "@oh-my-pi/pi-ai",
   "version": "16.2.2",
   "description": "Unified LLM API with automatic model discovery and provider configuration",
-  "homepage": "https://omp.sh",
+  "homepage": "https://pi.sh",
   "author": "Can Boluk",
   "contributors": [
     "Mario Zechner"

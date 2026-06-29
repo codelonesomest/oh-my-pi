@@ -1,16 +1,16 @@
 /**
- * OMP extension-package sub-discovery provider.
+ * Pi extension-package sub-discovery provider.
  *
  * When a user configures an extension via `extensions:` (in settings) or
  * `--extension`/`-e` (on the CLI), the docs promise that the package's
  * sibling directories — `skills/`, `hooks/pre|post/`, `tools/`, `commands/`,
- * `rules/`, `prompts/`, and `.mcp.json` — are picked up by omp's standard
- * discovery surfaces. The native `omp` provider in `builtin.ts` only walks
- * `.omp/` and `~/.omp/agent/`, so without this provider those sub-trees are
+ * `rules/`, `prompts/`, and `.mcp.json` — are picked up by pi's standard
+ * discovery surfaces. The native `pi` provider in `builtin.ts` only walks
+ * `.pi/` and `~/.pi/agent/`, so without this provider those sub-trees are
  * silently ignored.
  *
- * Provider priority is set below the native `omp` provider (100) so an
- * extension package never shadows the user's own `.omp/` configuration on
+ * Provider priority is set below the native `pi` provider (100) so an
+ * extension package never shadows the user's own `.pi/` configuration on
  * dedup.
  *
  * @see ./omp-extension-roots.ts
@@ -32,7 +32,7 @@ import { buildRuleFromMarkdown, createSourceMeta, loadFilesFromDir, scanSkillsFr
 import { listOmpExtensionRoots, type OmpExtensionRoot } from "./omp-extension-roots";
 
 const PROVIDER_ID = "omp-plugins";
-const DISPLAY_NAME = "OMP Extension Packages";
+const DISPLAY_NAME = "Pi Extension Packages";
 const DESCRIPTION =
 	"Sub-discovery (skills, hooks, tools, commands, rules, prompts, .mcp.json) inside extension packages";
 const PRIORITY = 90;

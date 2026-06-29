@@ -41,12 +41,13 @@ describe("parseEnvFile", () => {
 		});
 	});
 
-	it("mirrors valid OMP_ variables to PI_ variables", () => {
-		const filePath = writeTempEnv("OMP_FEATURE=enabled\nOMP_BAD=before\0after\n");
+	it("preserves explicit OMP_ and PI_ variables without broad rename shims", () => {
+		const filePath = writeTempEnv(["OMP_FEATURE=legacy", "PI_FEATURE=primary", "OMP_PROFILE=old-profile"].join("\n"));
 
 		expect(parseEnvFile(filePath)).toEqual({
-			OMP_FEATURE: "enabled",
-			PI_FEATURE: "enabled",
+			OMP_FEATURE: "legacy",
+			PI_FEATURE: "primary",
+			OMP_PROFILE: "old-profile",
 		});
 	});
 });

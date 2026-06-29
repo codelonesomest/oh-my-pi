@@ -224,10 +224,10 @@ function buildInitScript(cwd: string, env?: Record<string, string | undefined>):
 	const envPayload = Object.fromEntries(envEntries);
 	return [
 		"import os, sys",
-		`__omp_cwd = ${JSON.stringify(cwd)}`,
-		"os.chdir(__omp_cwd)",
-		`__omp_env = ${JSON.stringify(envPayload)}`,
-		"for __omp_key, __omp_val in __omp_env.items():\n    os.environ[__omp_key] = __omp_val",
-		"if __omp_cwd not in sys.path:\n    sys.path.insert(0, __omp_cwd)",
+		`__pi_cwd = ${JSON.stringify(cwd)}`,
+		"os.chdir(__pi_cwd)",
+		`__pi_env = ${JSON.stringify(envPayload)}`,
+		"for __pi_key, __pi_val in __pi_env.items():\n    os.environ[__pi_key] = __pi_val",
+		"if __pi_cwd not in sys.path:\n    sys.path.insert(0, __pi_cwd)",
 	].join("\n");
 }

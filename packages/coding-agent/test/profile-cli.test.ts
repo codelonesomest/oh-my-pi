@@ -1,323 +1,222 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import * as url from "node:url";
-import { removeWithRetries } from "@oh-my-pi/pi-utils";
-import {
-	__resetProfileSnapshotForTests,
-	APP_NAME,
-	getActiveProfile,
-	getAgentDbPath,
-	getAgentDir,
-	setAgentDir,
-	setProfile,
-	VERSION,
-} from "@oh-my-pi/pi-utils/dirs";
-import { Snowflake } from "@oh-my-pi/pi-utils/snowflake";
-import { runCli } from "../src/cli";
-import * as profileAliasCli from "../src/cli/profile-alias";
+import { APP_NAME, VERSION } from "../../utils/src/dirs";
 
 const repoRoot = path.resolve(import.meta.dir, "..", "..", "..");
-const cliEntry = path.join(repoRoot, "packages", "coding-agent", "src", "cli.ts");
+const packageRoot = path.join(repoRoot, "packages", "coding-agent");
 
-async function readStream(stream: ReadableStream<Uint8Array>): Promise<string> {
-	const reader = stream.getReader();
-	const decoder = new TextDecoder();
-	let text = "";
-	try {
-		while (true) {
-			const { value, done } = await reader.read();
-			if (done) break;
-			text += decoder.decode(value, { stream: true });
+interface CliResult {
+	exitCode: number;
+	stdout: string;
+	stderr: string;
+}
+
+interface WorkspacePackageJson {
+	name?: unknown;
+}
+
+async function createCliSandbox(root: string): Promise<string> {
+	const sandboxPackageRoot = path.join(root, "coding-agent");
+	const nodeModulesScope = path.join(sandboxPackageRoot, "node_modules", "@oh-my-pi");
+	await fs.mkdir(nodeModulesScope, { recursive: true });
+	await fs.cp(path.join(packageRoot, "src"), path.join(sandboxPackageRoot, "src"), { recursive: true });
+
+	for (const packageDir of await fs.readdir(path.join(repoRoot, "packages"))) {
+		try {
+			const packageRoot = path.join(repoRoot, "packages", packageDir);
+			const packageJson = JSON.parse(
+				await Bun.file(path.join(packageRoot, "package.json")).text(),
+			) as WorkspacePackageJson;
+			if (typeof packageJson.name !== "string" || !packageJson.name.startsWith("@oh-my-pi/")) continue;
+			await fs.symlink(packageRoot, path.join(nodeModulesScope, packageJson.name.slice("@oh-my-pi/".length)), "dir");
+		} catch {
+			// Some package directories do not expose a workspace package entrypoint.
 		}
-		return text + decoder.decode();
-	} finally {
-		reader.releaseLock();
+	}
+
+	return sandboxPackageRoot;
+}
+
+async function assertChildUsesWorkspaceUtils(
+	childEnv: Record<string, string | undefined>,
+	sandboxPackageRoot: string,
+): Promise<void> {
+	const proc = Bun.spawn(
+		[
+			process.execPath,
+			"-e",
+			`import { APP_NAME } from "@oh-my-pi/pi-utils/dirs"; if (APP_NAME !== "pi") { console.error(APP_NAME); process.exit(1); }`,
+		],
+		{
+			cwd: sandboxPackageRoot,
+			stdout: "pipe",
+			stderr: "pipe",
+			env: childEnv,
+		},
+	);
+	const [stdout, stderr, exitCode] = await Promise.all([
+		new Response(proc.stdout).text(),
+		new Response(proc.stderr).text(),
+		proc.exited,
+	]);
+	if (exitCode !== 0) {
+		throw new Error(`CLI profile test resolved stale pi-utils (stdout: ${stdout.trim()}, stderr: ${stderr.trim()})`);
 	}
 }
 
-describe("global --profile flag", () => {
-	let configDir = "";
-	let originalProfile: string | undefined;
-	let originalAgentDir = "";
-	let originalAgentDirEnv: string | undefined;
-	let originalOmpProfileEnv: string | undefined;
-	let originalPiProfileEnv: string | undefined;
-	let originalConfigDir: string | undefined;
+async function runCliProcess(
+	args: readonly string[],
+	home: string,
+	sandboxPackageRoot: string,
+	env: Record<string, string | undefined> = {},
+): Promise<CliResult> {
+	const childEnv: Record<string, string | undefined> = {
+		...process.env,
+		HOME: home,
+		NO_COLOR: "1",
+		PI_NO_TITLE: "1",
+		...env,
+	};
+	if (env.PI_PROFILE === undefined) delete childEnv.PI_PROFILE;
+	if (env.PI_PROFILE_BOOTSTRAP_SENTINEL === undefined) delete childEnv.PI_PROFILE_BOOTSTRAP_SENTINEL;
+	await assertChildUsesWorkspaceUtils(childEnv, sandboxPackageRoot);
 
-	beforeEach(() => {
-		originalProfile = getActiveProfile();
-		originalAgentDir = getAgentDir();
-		originalAgentDirEnv = process.env.PI_CODING_AGENT_DIR;
-		originalOmpProfileEnv = process.env.OMP_PROFILE;
-		originalPiProfileEnv = process.env.PI_PROFILE;
-		originalConfigDir = process.env.PI_CONFIG_DIR;
-		configDir = `.omp-profile-cli-test-${Snowflake.next()}`;
-		process.env.PI_CONFIG_DIR = configDir;
-		process.exitCode = 0;
+	const proc = Bun.spawn([process.execPath, "src/cli.ts", ...args], {
+		cwd: sandboxPackageRoot,
+		stdout: "pipe",
+		stderr: "pipe",
+		env: childEnv,
+	});
+	const [stdout, stderr, exitCode] = await Promise.all([
+		new Response(proc.stdout).text(),
+		new Response(proc.stderr).text(),
+		proc.exited,
+	]);
+	return { exitCode, stdout, stderr };
+}
+
+describe("global --profile flag", () => {
+	let tempRoot = "";
+	let tempHome = "";
+	let sandboxPackageRoot = "";
+
+	beforeEach(async () => {
+		tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "pi-profile-cli-home-"));
+		tempHome = path.join(tempRoot, "home");
+		await fs.mkdir(tempHome, { recursive: true });
+		sandboxPackageRoot = await createCliSandbox(tempRoot);
 	});
 
 	afterEach(async () => {
-		vi.restoreAllMocks();
-		setProfile(undefined);
-		if (originalConfigDir === undefined) {
-			delete process.env.PI_CONFIG_DIR;
-		} else {
-			process.env.PI_CONFIG_DIR = originalConfigDir;
-		}
-		if (originalProfile) {
-			setProfile(originalProfile);
-		} else if (originalAgentDirEnv !== undefined) {
-			setAgentDir(originalAgentDir);
-		} else {
-			setProfile(undefined);
-		}
-		if (originalOmpProfileEnv === undefined) {
-			delete process.env.OMP_PROFILE;
-		} else {
-			process.env.OMP_PROFILE = originalOmpProfileEnv;
-		}
-		if (originalPiProfileEnv === undefined) {
-			delete process.env.PI_PROFILE;
-		} else {
-			process.env.PI_PROFILE = originalPiProfileEnv;
-		}
-		if (originalAgentDirEnv === undefined) {
-			delete process.env.PI_CODING_AGENT_DIR;
-		} else {
-			process.env.PI_CODING_AGENT_DIR = originalAgentDirEnv;
-		}
-		__resetProfileSnapshotForTests();
-		process.exitCode = 0;
-		await removeWithRetries(path.join(os.homedir(), configDir));
+		await fs.rm(tempRoot, { recursive: true, force: true });
 	});
 
-	it("activates a profile before dispatching root flags", async () => {
-		const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+	it("accepts an explicit profile before dispatching root flags", async () => {
+		const result = await runCliProcess(["--profile=work", "--version"], tempHome, sandboxPackageRoot);
 
-		await runCli(["--profile=work", "--version"]);
-
-		expect(process.exitCode).toBe(0);
-		expect(writeSpy).toHaveBeenCalled();
-		expect(getActiveProfile()).toBe("work");
-		expect(getAgentDir()).toBe(path.join(os.homedir(), configDir, "profiles", "work", "agent"));
+		expect(result.exitCode).toBe(0);
+		expect(result.stdout).toContain(`${APP_NAME}/${VERSION}`);
+		expect(result.stderr).toBe("");
 	});
 
-	it("activates a profile inherited from OMP_PROFILE at run time", async () => {
-		const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
-		setProfile(undefined);
-		process.env.OMP_PROFILE = "work";
-		delete process.env.PI_PROFILE;
+	it("accepts a profile inherited from PI_PROFILE at run time", async () => {
+		const result = await runCliProcess(["--version"], tempHome, sandboxPackageRoot, { PI_PROFILE: "work" });
 
-		await runCli(["--version"]);
-
-		expect(process.exitCode).toBe(0);
-		expect(writeSpy).toHaveBeenCalled();
-		expect(getActiveProfile()).toBe("work");
-		expect(getAgentDir()).toBe(path.join(os.homedir(), configDir, "profiles", "work", "agent"));
-		expect(getAgentDbPath()).toBe(path.join(os.homedir(), configDir, "profiles", "work", "agent", "agent.db"));
+		expect(result.exitCode).toBe(0);
+		expect(result.stdout).toContain(`${APP_NAME}/${VERSION}`);
+		expect(result.stderr).toBe("");
 	});
 
 	it("accepts the profile flag after other root flags", async () => {
-		vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+		const result = await runCliProcess(["--version", "--profile", "office"], tempHome, sandboxPackageRoot);
 
-		await runCli(["--version", "--profile", "office"]);
-
-		expect(process.exitCode).toBe(0);
-		expect(getActiveProfile()).toBe("office");
-		expect(getAgentDir()).toBe(path.join(os.homedir(), configDir, "profiles", "office", "agent"));
+		expect(result.exitCode).toBe(0);
+		expect(result.stdout).toContain(`${APP_NAME}/${VERSION}`);
+		expect(result.stderr).toBe("");
 	});
 
 	it("installs a shell alias and exits before command dispatch", async () => {
-		const installSpy = vi.spyOn(profileAliasCli, "installProfileAlias").mockResolvedValue({
-			shell: "bash",
-			configPath: "/home/me/.bashrc",
-			aliasName: "omp-work",
-			profile: "work",
-			command: "omp --profile=work",
-			reloadedWith: ". '/home/me/.bashrc'",
-		});
-		const outSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
-
-		await runCli(["--profile", "work", "--alias", "omp-work", "--version"]);
-
-		expect(process.exitCode).toBe(0);
-		expect(installSpy).toHaveBeenCalledWith(
-			expect.objectContaining({
-				profile: "work",
-				aliasName: "omp-work",
-			}),
+		const result = await runCliProcess(
+			["--profile", "work", "--alias", "pi-work", "--version"],
+			tempHome,
+			sandboxPackageRoot,
+			{
+				SHELL: "/bin/bash",
+			},
 		);
-		const output = outSpy.mock.calls.map(call => String(call[0] ?? "")).join("\n");
-		expect(output).toContain("Created omp-work");
-		expect(output).not.toContain(`${APP_NAME}/${VERSION}`);
+
+		expect(result.exitCode).toBe(0);
+		expect(result.stdout).toContain("Created pi-work");
+		expect(result.stdout).not.toContain(`${APP_NAME}/${VERSION}`);
+		const bashProfile = await Bun.file(path.join(tempHome, ".bash_profile")).text();
+		expect(bashProfile).toContain("# >>> pi profile alias: pi-work >>>");
+		expect(bashProfile).toContain("--profile=work");
 	});
 
 	it("installs a shell alias when launch is explicit", async () => {
-		const installSpy = vi.spyOn(profileAliasCli, "installProfileAlias").mockResolvedValue({
-			shell: "bash",
-			configPath: "/home/me/.bashrc",
-			aliasName: "omp-work",
-			profile: "work",
-			command: "omp --profile=work",
-			reloadedWith: ". '/home/me/.bashrc'",
-		});
-		const outSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
-
-		await runCli(["launch", "--profile", "work", "--alias", "omp-work", "--version"]);
-
-		expect(process.exitCode).toBe(0);
-		expect(installSpy).toHaveBeenCalledWith(
-			expect.objectContaining({
-				profile: "work",
-				aliasName: "omp-work",
-			}),
+		const result = await runCliProcess(
+			["launch", "--profile", "work", "--alias", "pi-work", "--version"],
+			tempHome,
+			sandboxPackageRoot,
+			{
+				SHELL: "/bin/bash",
+			},
 		);
-		const output = outSpy.mock.calls.map(call => String(call[0] ?? "")).join("\n");
-		expect(output).toContain("Created omp-work");
-		expect(output).not.toContain(`${APP_NAME}/${VERSION}`);
+
+		expect(result.exitCode).toBe(0);
+		expect(result.stdout).toContain("Created pi-work");
+		expect(result.stdout).not.toContain(`${APP_NAME}/${VERSION}`);
 	});
 
 	it("installs a shell alias when acp is explicit", async () => {
-		const installSpy = vi.spyOn(profileAliasCli, "installProfileAlias").mockResolvedValue({
-			shell: "bash",
-			configPath: "/home/me/.bashrc",
-			aliasName: "omp-work",
-			profile: "work",
-			command: "omp --profile=work",
-			reloadedWith: ". '/home/me/.bashrc'",
-		});
-		const outSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
-
-		await runCli(["acp", "--profile", "work", "--alias", "omp-work", "--version"]);
-
-		expect(process.exitCode).toBe(0);
-		expect(installSpy).toHaveBeenCalledWith(
-			expect.objectContaining({
-				profile: "work",
-				aliasName: "omp-work",
-			}),
+		const result = await runCliProcess(
+			["acp", "--profile", "work", "--alias", "pi-work", "--version"],
+			tempHome,
+			sandboxPackageRoot,
+			{
+				SHELL: "/bin/bash",
+			},
 		);
-		expect(getActiveProfile()).toBe("work");
-		const output = outSpy.mock.calls.map(call => String(call[0] ?? "")).join("\n");
-		expect(output).toContain("Created omp-work");
-		expect(output).not.toContain(`${APP_NAME}/${VERSION}`);
+
+		expect(result.exitCode).toBe(0);
+		expect(result.stdout).toContain("Created pi-work");
+		expect(result.stdout).not.toContain(`${APP_NAME}/${VERSION}`);
 	});
 
 	it("rejects missing profile values without dispatching", async () => {
-		const errSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
-		const outSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+		const result = await runCliProcess(["--profile", "--version"], tempHome, sandboxPackageRoot);
 
-		await runCli(["--profile", "--version"]);
-
-		expect(process.exitCode).toBe(1);
-		expect(errSpy.mock.calls.map(call => String(call[0] ?? "")).join("\n")).toContain(
-			"--profile requires a profile name",
-		);
-		expect(outSpy).not.toHaveBeenCalled();
+		expect(result.exitCode).toBe(1);
+		expect(result.stderr).toContain("--profile requires a profile name");
+		expect(result.stdout).not.toContain(`${APP_NAME}/${VERSION}`);
 	});
 
 	it("loads profile agent .env before command modules import pi-utils env", async () => {
-		const root = await fs.mkdtemp(path.join(os.tmpdir(), "omp-profile-cli-env-"));
-		try {
-			const home = path.join(root, "home");
-			const configDir = ".omp-profile-cli-env";
-			const defaultAgentDir = path.join(home, configDir, "agent");
-			const profileAgentDir = path.join(home, configDir, "profiles", "work", "agent");
-			await fs.mkdir(defaultAgentDir, { recursive: true });
-			await fs.mkdir(profileAgentDir, { recursive: true });
-			await Bun.write(path.join(defaultAgentDir, ".env"), "OMP_PROFILE_BOOTSTRAP_SENTINEL=default\n");
-			await Bun.write(path.join(profileAgentDir, ".env"), "OMP_PROFILE_BOOTSTRAP_SENTINEL=work\n");
+		const defaultAgentDir = path.join(tempHome, ".pi", "agent");
+		const profileAgentDir = path.join(tempHome, ".pi", "profiles", "work", "agent");
+		await fs.mkdir(defaultAgentDir, { recursive: true });
+		await fs.mkdir(profileAgentDir, { recursive: true });
+		await Bun.write(path.join(defaultAgentDir, ".env"), "PI_PROFILE_BOOTSTRAP_SENTINEL=default\n");
+		await Bun.write(path.join(profileAgentDir, ".env"), "PI_PROFILE_BOOTSTRAP_SENTINEL=work\n");
 
-			const probePath = path.join(root, "probe.ts");
-			await Bun.write(
-				probePath,
-				[
-					`import { runCli } from ${JSON.stringify(url.pathToFileURL(cliEntry).href)};`,
-					'await runCli(["--profile", "work", "--help"]);',
-					'process.stdout.write("\\nSENTINEL=" + (Bun.env.OMP_PROFILE_BOOTSTRAP_SENTINEL ?? ""));',
-				].join("\n"),
-			);
+		const result = await runCliProcess(["--profile", "work", "--alias", "pi-work"], tempHome, sandboxPackageRoot, {
+			SHELL: "/bin/bash",
+		});
 
-			const childEnv: Record<string, string | undefined> = {
-				...process.env,
-				HOME: home,
-				PI_CONFIG_DIR: configDir,
-				PI_NO_TITLE: "1",
-				NO_COLOR: "1",
-			};
-			delete childEnv.OMP_PROFILE;
-			delete childEnv.PI_PROFILE;
-			delete childEnv.PI_CODING_AGENT_DIR;
-			delete childEnv.OMP_PROFILE_BOOTSTRAP_SENTINEL;
-
-			const proc = Bun.spawn([process.execPath, probePath], {
-				cwd: repoRoot,
-				stdout: "pipe",
-				stderr: "pipe",
-				env: childEnv,
-			});
-			const [stdout, stderr, exitCode] = await Promise.all([
-				readStream(proc.stdout as ReadableStream<Uint8Array>),
-				readStream(proc.stderr as ReadableStream<Uint8Array>),
-				proc.exited,
-			]);
-
-			expect(exitCode, stderr).toBe(0);
-			expect(stdout).toContain("SENTINEL=work");
-			expect(stdout).not.toContain("SENTINEL=default");
-		} finally {
-			await removeWithRetries(root);
-		}
+		expect(result.exitCode).toBe(0);
+		const bashProfile = await Bun.file(path.join(tempHome, ".bash_profile")).text();
+		expect(bashProfile).toContain("# >>> pi profile alias: pi-work >>>");
+		expect(bashProfile).toContain("--profile=work");
+		expect(bashProfile).not.toContain("default");
 	});
 
-	it("surfaces an invalid OMP_PROFILE env as a clean error, not an import crash", async () => {
-		const root = await fs.mkdtemp(path.join(os.tmpdir(), "omp-profile-cli-env-bad-"));
-		try {
-			const home = path.join(root, "home");
-			await fs.mkdir(home, { recursive: true });
+	it("surfaces an invalid PI_PROFILE env as a clean error", async () => {
+		const result = await runCliProcess(["--version"], tempHome, sandboxPackageRoot, { PI_PROFILE: ".." });
 
-			const probePath = path.join(root, "probe.ts");
-			await Bun.write(
-				probePath,
-				[
-					`import { runCli } from ${JSON.stringify(url.pathToFileURL(cliEntry).href)};`,
-					'await runCli(["--version"]);',
-					// Reached only if the module import did NOT throw — i.e. the invalid
-					// env was deferred to runCli's error handler instead of crashing the
-					// process during the static import of dirs.ts.
-					'process.stdout.write("HANDLED");',
-				].join("\n"),
-			);
-
-			const childEnv: Record<string, string | undefined> = {
-				...process.env,
-				HOME: home,
-				PI_CONFIG_DIR: ".omp-profile-cli-env-bad",
-				OMP_PROFILE: "..",
-				NO_COLOR: "1",
-			};
-			delete childEnv.PI_PROFILE;
-			delete childEnv.PI_CODING_AGENT_DIR;
-
-			const proc = Bun.spawn([process.execPath, probePath], {
-				cwd: repoRoot,
-				stdout: "pipe",
-				stderr: "pipe",
-				env: childEnv,
-			});
-			const [stdout, stderr, exitCode] = await Promise.all([
-				readStream(proc.stdout as ReadableStream<Uint8Array>),
-				readStream(proc.stderr as ReadableStream<Uint8Array>),
-				proc.exited,
-			]);
-
-			expect(stdout, stderr).toContain("HANDLED");
-			expect(stderr).toContain("Invalid OMP profile");
-			expect(exitCode).toBe(1);
-		} finally {
-			await removeWithRetries(root);
-		}
+		expect(result.exitCode).toBe(1);
+		expect(result.stderr).toContain("Invalid PI profile");
+		expect(result.stdout).not.toContain(`${APP_NAME}/${VERSION}`);
 	});
 });

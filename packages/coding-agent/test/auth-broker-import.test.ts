@@ -44,7 +44,7 @@ describe("auth-broker import (CLIProxyAPI)", () => {
 		return file;
 	}
 
-	test("imports a directory of CLIProxyAPI JSONs and maps types to omp providers", async () => {
+	test("imports a directory of CLIProxyAPI JSONs and maps types to pi providers", async () => {
 		await writeCliProxyJson("claude-sample.json", {
 			type: "claude",
 			access_token: "claude-access-1",
@@ -198,8 +198,14 @@ describe("auth-broker import (broker-routed)", () => {
 	const savedEnv: Record<string, string | undefined> = {};
 
 	beforeEach(async () => {
-		savedEnv.OMP_AUTH_BROKER_URL = process.env.OMP_AUTH_BROKER_URL;
-		savedEnv.OMP_AUTH_BROKER_TOKEN = process.env.OMP_AUTH_BROKER_TOKEN;
+		for (const key of [
+			"PI_AUTH_BROKER_URL",
+			"PI_AUTH_BROKER_TOKEN",
+			"OMP_AUTH_BROKER_URL",
+			"OMP_AUTH_BROKER_TOKEN",
+		] as const) {
+			savedEnv[key] = process.env[key];
+		}
 		agentDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-import-client-"));
 		brokerAgentDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-import-broker-"));
 		cliproxyDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-import-cliproxy-broker-"));
@@ -214,8 +220,8 @@ describe("auth-broker import (broker-routed)", () => {
 			bearerTokens: [token],
 			disableRefresher: true,
 		});
-		process.env.OMP_AUTH_BROKER_URL = handle.url;
-		process.env.OMP_AUTH_BROKER_TOKEN = token;
+		process.env.PI_AUTH_BROKER_URL = handle.url;
+		process.env.PI_AUTH_BROKER_TOKEN = token;
 	});
 
 	afterEach(async () => {
@@ -225,7 +231,12 @@ describe("auth-broker import (broker-routed)", () => {
 		await removeWithRetries(agentDir);
 		await removeWithRetries(brokerAgentDir);
 		await removeWithRetries(cliproxyDir);
-		for (const key of ["OMP_AUTH_BROKER_URL", "OMP_AUTH_BROKER_TOKEN"] as const) {
+		for (const key of [
+			"PI_AUTH_BROKER_URL",
+			"PI_AUTH_BROKER_TOKEN",
+			"OMP_AUTH_BROKER_URL",
+			"OMP_AUTH_BROKER_TOKEN",
+		] as const) {
 			if (savedEnv[key] === undefined) delete process.env[key];
 			else process.env[key] = savedEnv[key];
 		}

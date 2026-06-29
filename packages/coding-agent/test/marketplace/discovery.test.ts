@@ -1,13 +1,13 @@
 /**
- * Discovery integration tests for OMP plugin registry reading.
+ * Discovery integration tests for Pi plugin registry reading.
  *
  * NOTE: listClaudePluginRoots() lives in discovery/helpers.ts which imports
  * @oh-my-pi/pi-natives (native Rust addon via glob). We cannot call it here.
  *
  * Instead these tests validate the structural contract that listClaudePluginRoots
  * depends on:
- *   1. OMP registry lives at path.join(home, ".omp", "plugins", "installed_plugins.json")
- *      (matches getConfigDirName() == ".omp")
+ *   1. Pi registry lives at path.join(home, ".pi", "plugins", "installed_plugins.json")
+ *      (matches getConfigDirName() == ".pi")
  *   2. The registry format passes the same validator that parseClaudePluginsRegistry uses
  *   3. readInstalledPluginsRegistry / writeInstalledPluginsRegistry produce files that
  *      satisfy that validator
@@ -53,9 +53,9 @@ function validateClaudeRegistryFormat(content: string): Record<string, unknown> 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 // Matches getConfigDirName() — single source of truth is in @oh-my-pi/pi-utils,
-// but we know the value is ".omp" and hardcoding it here keeps tests free of
+// but we know the value is ".pi" and hardcoding it here keeps tests free of
 // native-addon transitive imports.
-const OMP_CONFIG_DIR = ".omp";
+const OMP_CONFIG_DIR = ".pi";
 
 function makeEntry(installPath: string, version = "1.0.0"): InstalledPluginEntry {
 	return {
@@ -70,7 +70,7 @@ function makeEntry(installPath: string, version = "1.0.0"): InstalledPluginEntry
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
 let tmpHome: string;
-/** ~/.omp/plugins/installed_plugins.json inside tmpHome */
+/** ~/.pi/plugins/installed_plugins.json inside tmpHome */
 let ompRegistryPath: string;
 
 beforeEach(() => {
@@ -85,18 +85,18 @@ afterEach(() => {
 
 // ── Path contract ─────────────────────────────────────────────────────────────
 
-describe("OMP registry path contract", () => {
-	it("OMP registry lives at home/.omp/plugins/installed_plugins.json", () => {
+describe("Pi registry path contract", () => {
+	it("Pi registry lives at home/.pi/plugins/installed_plugins.json", () => {
 		// This is the path that listClaudePluginRoots reads.
 		// Any change to this path must be reflected in helpers.ts.
-		const expected = path.join(tmpHome, ".omp", "plugins", "installed_plugins.json");
+		const expected = path.join(tmpHome, ".pi", "plugins", "installed_plugins.json");
 		expect(ompRegistryPath).toBe(expected);
 	});
 });
 
 // ── Format compatibility ───────────────────────────────────────────────────────
 
-describe("OMP registry format compatibility with Claude parser", () => {
+describe("Pi registry format compatibility with Claude parser", () => {
 	it("empty registry written by writeInstalledPluginsRegistry passes validator", async () => {
 		await writeInstalledPluginsRegistry(ompRegistryPath, { version: 2, plugins: {} });
 
@@ -142,7 +142,7 @@ describe("OMP registry format compatibility with Claude parser", () => {
 
 // ── Round-trip ────────────────────────────────────────────────────────────────
 
-describe("OMP registry round-trip", () => {
+describe("Pi registry round-trip", () => {
 	it("reads back what was written — single plugin", async () => {
 		const id = buildPluginId("hello-plugin", "test-marketplace");
 		const entry = makeEntry("/tmp/fake-plugin-path");
@@ -208,14 +208,14 @@ describe("OMP registry round-trip", () => {
 // plugin ID appears in both registries. We cannot call that function here, but we
 // can verify the data shapes that the replacement logic reads are correct.
 
-describe("OMP precedence contract (registry structure)", () => {
-	it("same plugin ID in both registries — OMP entry has required fields for deduplication", () => {
+describe("Pi precedence contract (registry structure)", () => {
+	it("same plugin ID in both registries — Pi entry has required fields for deduplication", () => {
 		// The replacement logic: roots.filter(r => r.id !== pluginId) keyed by id.
-		// OMP entries must have installPath so they can be added to roots[].
+		// Pi entries must have installPath so they can be added to roots[].
 		const id = buildPluginId("shared-plugin", "common-mkt");
-		const ompEntry = makeEntry("/omp/cached/path");
+		const ompEntry = makeEntry("/pi/cached/path");
 
-		// OMP registry entry has installPath (required by listClaudePluginRoots)
+		// Pi registry entry has installPath (required by listClaudePluginRoots)
 		expect(ompEntry.installPath).toBeTruthy();
 		expect(typeof ompEntry.installPath).toBe("string");
 		// ID parses correctly with lastIndexOf("@")

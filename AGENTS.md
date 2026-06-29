@@ -28,6 +28,15 @@ Unless user tells you exactly what to write:
 - **Never comment on GitHub** (issues, PRs, discussions).
 - **Never create issues on GitHub**.
 
+## Fork Maintenance / Minimal-Diff Policy
+
+- This repo is a private fork: keep `main` close to upstream, but do not push fork changes upstream.
+- Do not do feature or fork-specific work directly on `main`; use short-lived topic branches.
+- Pull official upstream through a dedicated sync branch before merging into `main`.
+- Keep diffs small, local, and pattern-matched to the surrounding code.
+- Avoid refactors, renames, formatting churn, and provenance marker comments.
+- Add comments only when needed to explain non-obvious behavior.
+
 ## Code Quality
 
 - No `any` unless absolutely necessary.

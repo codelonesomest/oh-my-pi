@@ -2,9 +2,9 @@
  * Task tool - Delegate tasks to specialized agents.
  *
  * Discovers agent definitions from:
- *   - Bundled agents (shipped with omp-coding-agent)
- *   - ~/.omp/agent/agents/*.md (user-level)
- *   - .omp/agents/*.md (project-level)
+ *   - Bundled agents (shipped with pi-coding-agent)
+ *   - ~/.pi/agent/agents/*.md (user-level)
+ *   - .pi/agents/*.md (project-level)
  *
  * Supports:
  *   - Single agent spawn per call (parallelism = parallel task calls)

@@ -30,7 +30,7 @@ The standalone runner has no timeout. It runs iteration after iteration until th
 
 ### Inside oh-my-pi (TUI)
 
-Register the extension in your config (`~/.omp/config.json` or `.omp/config.json`):
+Register the extension in your config (`~/.pi/config.json` or `.omp/config.json`):
 
 ```json
 {
@@ -436,7 +436,7 @@ tracking/status.json      -> Cumulative state
 
 ## Models
 
-Any model configured in omp works. Set a swarm default and optionally override per agent:
+Any model configured in pi works. Set a swarm default and optionally override per agent:
 
 ```yaml
 swarm:

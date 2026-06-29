@@ -7,7 +7,7 @@
  * settings. The original `--list-models` short-circuit in `runRootCommand`
  * exited before extensions were loaded.
  *
- * Contract under test: the `omp models` listing entry point loads extensions
+ * Contract under test: the `pi models` listing entry point loads extensions
  * (CLI `-e` paths and configured `settings.extensions`) before listing, so
  * extension-registered providers/models appear in the output.
  */
@@ -54,7 +54,7 @@ afterAll(async () => {
 	await tmp.remove();
 });
 
-test("omp models surfaces extension-registered providers (issue #905)", async () => {
+test("pi models surfaces extension-registered providers (issue #905)", async () => {
 	const authStorage = await AuthStorage.create(dbPath);
 	try {
 		const modelRegistry = new ModelRegistry(authStorage);

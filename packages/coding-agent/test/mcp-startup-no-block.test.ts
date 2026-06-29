@@ -1,5 +1,5 @@
 /**
- * Regression test for issue #2100: omp startup blocked >25s while connecting
+ * Regression test for issue #2100: pi startup blocked >25s while connecting
  * to MCP servers.
  *
  * The scenario: a configured MCP server is reachable at the transport layer

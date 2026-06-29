@@ -8,7 +8,7 @@
  * in the parent's address space and crashed the CLI on exit.
  *
  * The fix relocates the worker to a child process: `title-client.ts` spawns
- * `process.execPath … __omp_tiny_inference`, `cli.ts` dispatches that flag into
+ * `process.execPath … __pi_tiny_inference`, `cli.ts` dispatches that flag into
  * `runTinyWorker`, and the parent `SIGKILL`s the child on dispose so the
  * native finalizer never runs in either address space. These tests pin the
  * three pieces of that contract so a future refactor cannot quietly land
@@ -21,7 +21,7 @@ import { createTinyTitleSubprocess } from "@oh-my-pi/pi-coding-agent/tiny/title-
 describe("issue #1606 — tiny model lives in an isolated subprocess", () => {
 	it("ping/pongs through the spawned worker subprocess and tears it down cleanly", async () => {
 		// `smokeTestTinyTitleWorker` is the runtime probe wired into
-		// `omp --smoke-test`. Run it in a child Bun process instead of this
+		// `pi --smoke-test`. Run it in a child Bun process instead of this
 		// Bun-test worker: the test runner owns its own IPC channel and can
 		// starve nested Bun subprocess IPC on some Bun builds.
 		const repoRoot = path.resolve(import.meta.dir, "../../..");

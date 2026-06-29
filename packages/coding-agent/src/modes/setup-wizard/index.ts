@@ -32,6 +32,14 @@ function setupSkipEnvEnabled(value: string | undefined): boolean {
 	return normalized !== "" && normalized !== "0" && normalized !== "false" && normalized !== "no";
 }
 
+function readSkipSetupEnv(): string | undefined {
+	const primary = Bun.env.PI_SKIP_SETUP;
+	if (primary?.trim()) return primary;
+	const legacy = Bun.env.OMP_SKIP_SETUP;
+	if (legacy?.trim()) return legacy;
+	return undefined;
+}
+
 export async function selectSetupScenes(
 	storedVersion: number,
 	scenes: readonly SetupScene[],
@@ -42,7 +50,7 @@ export async function selectSetupScenes(
 	if (!isTTY) return [];
 	if (!options.force) {
 		if (options.resuming) return [];
-		if (setupSkipEnvEnabled(options.skipEnv ?? Bun.env.OMP_SKIP_SETUP)) return [];
+		if (setupSkipEnvEnabled(options.skipEnv ?? readSkipSetupEnv())) return [];
 		if (options.setupWizardEnabled === false) return [];
 	}
 

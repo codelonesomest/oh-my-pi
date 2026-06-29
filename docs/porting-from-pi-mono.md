@@ -359,7 +359,7 @@ Our fork has architectural decisions that differ from upstream. **Do not port th
 | Upstream                                                         | Our Fork                                                                                          |
 | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
 | `jiti` for TypeScript loading                                    | Native Bun `import()`                                                                              |
-| `pkg.pi` manifest field                                          | `pkg.omp` preferred; fallback to `pkg.pi` remains                                                  |
+| `pkg.pi` manifest field                                          | `pkg.pi` preferred; fallback to `pkg.pi` remains                                                  |
 | `StringEnum` from `pi-ai`                                        | `Type.Enum` from the `pi.typebox` shim (or author the schema with `pi.zod`); `pi-ai` no longer exports `StringEnum` |
 | `formatSize` from `pi-coding-agent`                              | `formatBytes` from `@oh-my-pi/pi-utils`                                                            |
 | `DefaultResourceLoader` / `DefaultPackageManager` / `SettingsManager` / `createEventBus` | Capability-based discovery (`loadCapability(...)`) plus the `Settings` singleton and `EventBus` |

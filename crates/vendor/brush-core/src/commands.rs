@@ -35,11 +35,11 @@ pub enum CommandWaitResult {
 /// Represents the context for executing a command.
 pub struct ExecutionContext<'a, SE: ShellExtensions = extensions::DefaultShellExtensions> {
 	/// The shell in which the command is being executed.
-	pub shell:        &'a mut Shell<SE>,
+	pub shell: &'a mut Shell<SE>,
 	/// The name of the command being executed.
 	pub command_name: String,
 	/// The parameters for the execution.
-	pub params:       ExecutionParameters,
+	pub params: ExecutionParameters,
 }
 
 impl<SE: ShellExtensions> ExecutionContext<'_, SE> {
@@ -489,9 +489,9 @@ impl<'a, SE: extensions::ShellExtensions> SimpleCommand<'a, SE> {
 		let last_arg = Self::take_last_arg(&self.args);
 
 		let cmd_context = ExecutionContext {
-			shell:        &mut shell,
+			shell: &mut shell,
 			command_name: self.command_name,
-			params:       self.params,
+			params: self.params,
 		};
 
 		let result = execute_builtin_command(&builtin, cmd_context, self.args).await;
@@ -518,11 +518,8 @@ impl<'a, SE: extensions::ShellExtensions> SimpleCommand<'a, SE> {
 
 		let last_arg = Self::take_last_arg(&self.args);
 
-		let cmd_context = ExecutionContext {
-			shell:        &mut shell,
-			command_name: self.command_name,
-			params,
-		};
+		let cmd_context =
+			ExecutionContext { shell: &mut shell, command_name: self.command_name, params };
 
 		// Strip the function name off args.
 		let result = invoke_shell_function(func_registration, cmd_context, &self.args[1..]).await;
@@ -545,9 +542,9 @@ impl<'a, SE: extensions::ShellExtensions> SimpleCommand<'a, SE> {
 		let last_arg = Self::take_last_arg(&self.args);
 
 		let cmd_context = ExecutionContext {
-			shell:        &mut shell,
+			shell: &mut shell,
 			command_name: self.command_name,
-			params:       self.params,
+			params: self.params,
 		};
 
 		let resolved_path = path.to_string_lossy();
@@ -615,7 +612,6 @@ pub(crate) fn execute_external_command(
 	)?;
 	let mut marker_output = prepare_output_markers(&context, executable_path, cmd_args.as_slice());
 
-
 	// Set up process group/session state.
 	//
 	// A child we are about to `setsid()` (`DetachSession`) must NOT also be
@@ -639,11 +635,11 @@ pub(crate) fn execute_external_command(
 			} else {
 				cmd.detach_session();
 			}
-		}
+		},
 		ChildSessionAction::TakeForeground if command_leads_session => {
 			// Don't set process_group(0) - setsid() in pre_exec will handle it.
 			cmd.lead_session();
-		}
+		},
 		ChildSessionAction::TakeForeground => {
 			// Foreground a child that is not leading its own session: create/join
 			// the process group in the current session, then grab the terminal.
@@ -653,7 +649,7 @@ pub(crate) fn execute_external_command(
 				cmd.process_group(pgid);
 			}
 			cmd.take_foreground();
-		}
+		},
 		ChildSessionAction::None => {
 			// Normal case: create a new process group in the current session, or
 			// join an established one (later pipeline stages).
@@ -662,7 +658,7 @@ pub(crate) fn execute_external_command(
 			} else if let Some(pgid) = process_group_id {
 				cmd.process_group(pgid);
 			}
-		}
+		},
 	}
 
 	// When tracing is enabled, report.
@@ -731,9 +727,9 @@ fn prepare_output_markers<SE: extensions::ShellExtensions>(
 ) -> Option<(openfiles::OpenFile, ExternalCommandOutputMarkers)> {
 	let marker = context.params.command_output_marker()?;
 	let markers = marker.markers_for_external_command(ExternalCommandInfo {
-		command_name:    context.command_name.as_str(),
+		command_name: context.command_name.as_str(),
 		executable_path,
-		args:            args.iter().map(|arg| arg.as_str()).collect(),
+		args: args.iter().map(|arg| arg.as_str()).collect(),
 	})?;
 	let mut output = context.params.try_stdout(context.shell)?;
 	if output.write_all(markers.start_marker.as_bytes()).is_err() {

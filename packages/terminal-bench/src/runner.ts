@@ -1,10 +1,10 @@
 #!/usr/bin/env bun
 /**
- * terminal-bench-2 runner for the local `omp` build.
+ * terminal-bench-2 runner for the local `pi` build.
  *
  * Orchestrates Harbor (`harbor run`) against the harbor-framework/terminal-bench-2
- * dataset using a custom agent (`agent/omp_local.py`) that installs the working
- * tree at /work/pi and routes all model auth through the host pm2 auth-gateway
+ * dataset using a custom agent (`agent/pi_local.py`) that installs the working
+ * tree at /work/pi and routes all model auth through the host pm2 pi-auth-gateway
  * (no provider keys ever enter the task containers).
  *
  * It owns the terminal: Harbor's own output is redirected to a log file and this
@@ -25,7 +25,7 @@ const REPO_ROOT = path.resolve(import.meta.dir, "..", "..", "..");
 const PKG_DIR = path.resolve(import.meta.dir, "..");
 const AGENT_DIR = path.join(PKG_DIR, "agent");
 const CODING_AGENT_DIR = path.join(REPO_ROOT, "packages", "coding-agent");
-const AGENT_IMPORT_PATH = "omp_local:OmpLocal";
+const AGENT_IMPORT_PATH = "pi_local:PiLocal";
 
 export interface Config {
 	models: string[];
@@ -75,7 +75,7 @@ function defaultConfig(): Config {
 		thinking: null,
 		advisorModel: null,
 		advisorSync: "1",
-		agent: "omp",
+		agent: "pi",
 		install: "local",
 		version: null,
 		tarball: null,
@@ -101,7 +101,7 @@ function defaultConfig(): Config {
 	};
 }
 
-const HELP = `terminal-bench-2 runner (local omp)
+const HELP = `terminal-bench-2 runner (local pi)
 
 Usage: bun src/runner.ts [options] [-- <extra harbor args>]
 
@@ -110,15 +110,15 @@ Commands:
 
 Model / agent:
   -m, --model <provider/model>   Model (repeatable). Default anthropic/claude-sonnet-4-6
-      --agent <name>             omp (default) | oracle | nop | any harbor agent
-      --install <local|published> omp source. local = pack /work/pi (default)
-      --version <v>              omp version for published install (default: latest)
+      --agent <name>             pi (default) | oracle | nop | any harbor agent
+      --install <local|published> pi source. local = pack /work/pi (default)
+      --version <v>              pi version for published install (default: latest)
       --thinking <level>         off|minimal|low|medium|high|xhigh
       --advisor-model <p/m>      Second model reviewing the primary (spend summed in)
       --advisor-sync <off|1|3|5> Advisor catch-up backlog (default 1 = accurate spend; off = faster)
-      --tarball <path>           Reuse a prebuilt omp tarball (implies --no-build)
+      --tarball <path>           Reuse a prebuilt pi tarball (implies --no-build)
       --no-build                 Skip packing; reuse newest tarball in bench dir
-      --env <KEY[=VALUE]>        Forward env into omp container (repeatable).
+      --env <KEY[=VALUE]>        Forward env into pi container (repeatable).
                                  KEY alone forwards host value; host PI_* auto-forwarded.
 
 Dataset / scale:
@@ -134,7 +134,7 @@ Gateway (auth, no keys in container):
       --gateway-token <tok>      Default "no-auth" (gateway runs --no-auth)
       --providers <csv>          Providers to route (default: model provider + anthropic,openai-codex)
       --no-gateway               Pass host provider API keys into containers instead
-      --web-search               Enable omp web_search (off by default; can't auth via gateway)
+      --web-search               Enable pi web_search (off by default; can't auth via gateway)
       --allow-host <host>        harbor --allow-agent-host (repeatable)
 
 Output / control:
@@ -414,15 +414,15 @@ function parseTrial(dir: string, name: string): Trial | null {
 			/* ignore */
 		}
 
-		// Try to parse realtime cost from the live agent omp.txt log if it exists
+		// Try to parse realtime cost from the live agent pi.txt log if it exists
 		let costUsd = 0;
 		let tokIn = 0;
 		let tokOut = 0;
 		let tokCache = 0;
-		const ompLogPath = path.join(dir, "agent", "omp.txt");
-		if (fs.existsSync(ompLogPath)) {
+		const piLogPath = path.join(dir, "agent", "pi.txt");
+		if (fs.existsSync(piLogPath)) {
 			try {
-				const content = fs.readFileSync(ompLogPath, "utf8");
+				const content = fs.readFileSync(piLogPath, "utf8");
 				for (const line of content.split("\n")) {
 					const trimmed = line.trim();
 					if (!trimmed) continue;
@@ -721,16 +721,16 @@ function writeReport(st: RenderState, benchDir: string, exitCode: number): strin
 	const tot = aggregate(trials, readJobResult(st.jobDir), st.expected);
 	const successPct = tot.done > 0 ? (tot.pass / tot.done) * 100 : 0;
 	const lines: string[] = [];
-	const isOmp = st.cfg.agent === "omp";
+	const isPi = st.cfg.agent === "pi";
 	const modelLine =
-		isOmp && st.cfg.advisorModel
+		isPi && st.cfg.advisorModel
 			? `${st.cfg.models.join(", ")} + advisor ${st.cfg.advisorModel}`
 			: st.cfg.models.join(", ");
 	lines.push(`# terminal-bench-2 — ${st.cfg.agent} — ${modelLine}`);
 	lines.push("");
 	lines.push(`- dataset: \`${st.cfg.dataset}\``);
 	lines.push(`- tasks: ${st.cfg.tasks} · attempts: ${st.cfg.attempts} · concurrency: ${st.cfg.concurrency}`);
-	if (isOmp) {
+	if (isPi) {
 		lines.push(
 			`- install: ${st.cfg.install} · auth: ${st.cfg.gateway ? "host gateway (no keys in container)" : "direct provider keys"}`,
 		);
@@ -784,7 +784,7 @@ function readPkgVersion(): string {
 }
 
 function buildTarball(benchDir: string): string {
-	process.stdout.write(dim("packing local omp (bun pm pack)…\n"));
+	process.stdout.write(dim("packing local pi (bun pm pack)…\n"));
 	const r = spawnSync("bun", ["pm", "pack", "--destination", benchDir], {
 		cwd: CODING_AGENT_DIR,
 		encoding: "utf8",
@@ -873,8 +873,8 @@ function buildHarborArgs(
 		a.push("--extra-docker-compose", hostNetworkOverlayPath);
 	}
 
-	if (cfg.agent === "omp") {
-		// Config + secrets travel via env (OMP_TB_*); the agent reads os.environ.
+	if (cfg.agent === "pi") {
+		// Config + secrets travel via env (PI_TB_*); the agent reads os.environ.
 		a.push("--agent-import-path", AGENT_IMPORT_PATH);
 		void modelsYaml;
 		void tarball;
@@ -886,8 +886,8 @@ function buildHarborArgs(
 }
 
 const FORWARD_ENV_DENYLIST = new Set([
-	"PI_CODING_AGENT_DIR",
-	"PI_CONFIG_DIR",
+	"XDG_CONFIG_HOME",
+	"XDG_CONFIG_HOME",
 	"PI_PROFILE",
 	"PI_PACKAGE_DIR",
 	"PI_SESSION_FILE",
@@ -899,7 +899,7 @@ const FORWARD_ENV_DENYLIST = new Set([
 ]);
 
 /**
- * Env vars injected into the in-container omp run: every host `PI_*` knob (minus
+ * Env vars injected into the in-container pi run: every host `PI_*` knob (minus
  * container-hostile dir/profile/session keys) plus explicit `--env` entries,
  * which always win and bypass the denylist.
  */
@@ -920,34 +920,34 @@ export function buildHarborEnv(
 	version: string,
 ): Record<string, string> {
 	const env: Record<string, string> = { ...(process.env as Record<string, string>) };
-	// Drop any stale OMP_TB_FORWARD_ENV inherited from the caller's shell before
+	// Drop any stale PI_TB_FORWARD_ENV inherited from the caller's shell before
 	// the agent-type early return, so it never leaks (incl. into the dry-run dump).
-	delete env.OMP_TB_FORWARD_ENV;
-	if (cfg.agent !== "omp") return env;
+	delete env.PI_TB_FORWARD_ENV;
+	if (cfg.agent !== "pi") return env;
 	const prepend = (k: string, v: string): void => {
 		env[k] = env[k] ? `${v}:${env[k]}` : v;
 	};
 	prepend("PYTHONPATH", AGENT_DIR);
-	env.OMP_TB_INSTALL = cfg.install;
-	env.OMP_TB_VERSION = cfg.version ?? version;
-	if (tarball) env.OMP_TB_TARBALL = tarball;
-	if (cfg.binaryArm64) env.OMP_TB_BINARY_ARM64 = cfg.binaryArm64;
-	if (cfg.binaryX64) env.OMP_TB_BINARY_X64 = cfg.binaryX64;
-	if (cfg.thinking) env.OMP_TB_THINKING = cfg.thinking;
+	env.PI_TB_INSTALL = cfg.install;
+	env.PI_TB_VERSION = cfg.version ?? version;
+	if (tarball) env.PI_TB_TARBALL = tarball;
+	if (cfg.binaryArm64) env.PI_TB_BINARY_ARM64 = cfg.binaryArm64;
+	if (cfg.binaryX64) env.PI_TB_BINARY_X64 = cfg.binaryX64;
+	if (cfg.thinking) env.PI_TB_THINKING = cfg.thinking;
 	if (cfg.advisorModel) {
-		env.OMP_TB_ADVISOR_MODEL = cfg.advisorModel;
-		env.OMP_TB_ADVISOR_SYNC = cfg.advisorSync;
+		env.PI_TB_ADVISOR_MODEL = cfg.advisorModel;
+		env.PI_TB_ADVISOR_SYNC = cfg.advisorSync;
 	}
-	if (cfg.webSearch) env.OMP_TB_WEB_SEARCH = "1";
-	env.OMP_TB_GATEWAY = cfg.gateway ? "1" : "0";
+	if (cfg.webSearch) env.PI_TB_WEB_SEARCH = "1";
+	env.PI_TB_GATEWAY = cfg.gateway ? "1" : "0";
 	if (cfg.gateway) {
-		env.OMP_TB_MODELS_YAML = modelsYaml;
-		env.OMP_TB_GATEWAY_URL = cfg.gatewayUrl;
-		env.OMP_TB_GATEWAY_TOKEN = cfg.gatewayToken;
-		env.OMP_TB_GATEWAY_PROVIDERS = deriveProviders(cfg).join(",");
+		env.PI_TB_MODELS_YAML = modelsYaml;
+		env.PI_TB_GATEWAY_URL = cfg.gatewayUrl;
+		env.PI_TB_GATEWAY_TOKEN = cfg.gatewayToken;
+		env.PI_TB_GATEWAY_PROVIDERS = deriveProviders(cfg).join(",");
 	}
 	const forward = collectForwardEnv(cfg);
-	if (Object.keys(forward).length > 0) env.OMP_TB_FORWARD_ENV = JSON.stringify(forward);
+	if (Object.keys(forward).length > 0) env.PI_TB_FORWARD_ENV = JSON.stringify(forward);
 	return env;
 }
 
@@ -1068,7 +1068,7 @@ async function main(): Promise<void> {
 	if (!which("harbor")) {
 		throw new Error("harbor not found on PATH. Install with: uv tool install harbor");
 	}
-	if (cfg.agent === "omp" && !which("docker")) {
+	if (cfg.agent === "pi" && !which("docker")) {
 		throw new Error("docker not found on PATH (required to run task containers).");
 	}
 
@@ -1083,7 +1083,7 @@ async function main(): Promise<void> {
 
 	// tarball (local install only)
 	let tarball: string | null = cfg.tarball;
-	if (cfg.agent === "omp" && cfg.install === "local" && !cfg.binaryArm64 && !cfg.binaryX64) {
+	if (cfg.agent === "pi" && cfg.install === "local" && !cfg.binaryArm64 && !cfg.binaryX64) {
 		if (tarball) {
 			process.stdout.write(dim(`using tarball ${tarball}\n`));
 		} else if (cfg.build) {
@@ -1096,12 +1096,12 @@ async function main(): Promise<void> {
 
 	// models.yml (gateway)
 	let modelsYaml = "";
-	if (cfg.agent === "omp" && cfg.gateway) {
+	if (cfg.agent === "pi" && cfg.gateway) {
 		modelsYaml = writeModelsYaml(benchDir, cfg);
 		if (!gatewayHealthOk(cfg.gatewayUrl)) {
 			process.stderr.write(
 				yellow(
-					`warning: gateway ${cfg.gatewayUrl} health check failed (continuing). Is the pm2 'omp-auth-gateway' running?\n`,
+					`warning: gateway ${cfg.gatewayUrl} health check failed (continuing). Is the pm2 'pi-auth-gateway' running?\n`,
 				),
 			);
 		}
@@ -1126,14 +1126,14 @@ async function main(): Promise<void> {
 			process.stdout.write(bold("models.yml:\n"));
 			process.stdout.write(`${fs.readFileSync(modelsYaml, "utf8")}\n`);
 		}
-		process.stdout.write(bold("omp env:\n"));
+		process.stdout.write(bold("pi env:\n"));
 		for (const k in harborEnv) {
-			if (k === "OMP_TB_FORWARD_ENV") continue;
-			if (k.startsWith("OMP_TB_") || k === "PYTHONPATH") process.stdout.write(`  ${k}=${harborEnv[k]}\n`);
+			if (k === "PI_TB_FORWARD_ENV") continue;
+			if (k.startsWith("PI_TB_") || k === "PYTHONPATH") process.stdout.write(`  ${k}=${harborEnv[k]}\n`);
 		}
-		if (harborEnv.OMP_TB_FORWARD_ENV) {
-			const keys = Object.keys(JSON.parse(harborEnv.OMP_TB_FORWARD_ENV) as Record<string, string>);
-			process.stdout.write(`  OMP_TB_FORWARD_ENV=${keys.join(",")} (values hidden)\n`);
+		if (harborEnv.PI_TB_FORWARD_ENV) {
+			const keys = Object.keys(JSON.parse(harborEnv.PI_TB_FORWARD_ENV) as Record<string, string>);
+			process.stdout.write(`  PI_TB_FORWARD_ENV=${keys.join(",")} (values hidden)\n`);
 		}
 		process.stdout.write(`\njob dir: ${jobDir}\nbench dir: ${benchDir}\n`);
 		return;

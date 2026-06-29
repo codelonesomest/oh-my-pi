@@ -38,7 +38,7 @@ const IS_COMPILED_BINARY = isCompiledBinary();
 // exception to the static-import rule.
 const BUNDLED_VIRTUAL_SCHEME = "omp-legacy-pi-bundled:";
 const BUNDLED_VIRTUAL_NAMESPACE = "omp-legacy-pi-bundled";
-const BUNDLED_REGISTRY_GLOBAL = "__ompLegacyPiBundledRegistry";
+const BUNDLED_REGISTRY_GLOBAL = "__piLegacyPiBundledRegistry";
 const TYPEBOX_BUNDLED_REGISTRY_KEY = "typebox";
 
 type BundledRegistry = Readonly<Record<string, Readonly<Record<string, unknown>>>>;
@@ -61,9 +61,7 @@ let bundledRegistryPromise: Promise<BundledRegistry> | null = null;
  */
 function ensureBundledRegistryLoaded(): Promise<BundledRegistry> {
 	if (!IS_COMPILED_BINARY) {
-		return Promise.reject(
-			new Error("omp:legacy-pi-shim: bundled registry is only available in compiled-binary mode"),
-		);
+		return Promise.reject(new Error("pi:legacy-pi-shim: bundled registry is only available in compiled-binary mode"));
 	}
 	if (!bundledRegistryPromise) {
 		bundledRegistryPromise = import("./legacy-pi-bundled-registry").then(m => {
@@ -92,10 +90,10 @@ function isBundledVirtualSpecifier(value: string): boolean {
 function synthesizeBundledModuleSourceFromRegistry(registryKey: string, registry: BundledRegistry): string {
 	const mod = registry[registryKey];
 	if (!mod) {
-		throw new Error(`omp:legacy-pi-shim: no bundled module registered for ${registryKey}`);
+		throw new Error(`pi:legacy-pi-shim: no bundled module registered for ${registryKey}`);
 	}
 	const lines: string[] = [
-		`const __omp_bundled = globalThis[${JSON.stringify(BUNDLED_REGISTRY_GLOBAL)}][${JSON.stringify(registryKey)}];`,
+		`const __pi_bundled = globalThis[${JSON.stringify(BUNDLED_REGISTRY_GLOBAL)}][${JSON.stringify(registryKey)}];`,
 	];
 	let hasDefault = false;
 	for (const exportName in mod) {
@@ -103,10 +101,10 @@ function synthesizeBundledModuleSourceFromRegistry(registryKey: string, registry
 			hasDefault = true;
 			continue;
 		}
-		lines.push(`export const ${exportName} = __omp_bundled[${JSON.stringify(exportName)}];`);
+		lines.push(`export const ${exportName} = __pi_bundled[${JSON.stringify(exportName)}];`);
 	}
 	if (hasDefault) {
-		lines.push("export default __omp_bundled.default;");
+		lines.push("export default __pi_bundled.default;");
 	}
 	lines.push("");
 	return lines.join("\n");
@@ -148,7 +146,7 @@ export function __getLegacyPiBundledRegistryGlobal(): string {
 // Canonical scope for in-process pi packages. Plugins published against any of
 // the aliased scopes below (mariozechner's original publish, earendil-works'
 // fork, or the canonical @oh-my-pi scope itself) are remapped to this scope and
-// resolved against the bundled copy that ships inside the omp binary. This
+// resolved against the bundled copy that ships inside the pi binary. This
 // keeps plugins running against the exact runtime state of the host (single
 // module registry, single tool registry, etc.) regardless of which historical
 // scope name they happened to declare in their peerDependencies.
@@ -160,7 +158,7 @@ const CANONICAL_PI_SCOPE = "@oh-my-pi";
 // path instead of pulling a duplicate copy from plugin node_modules.
 const PI_SCOPE_ALIASES = ["oh-my-pi", "mariozechner", "earendil-works"] as const;
 
-// Internal pi-* package basenames bundled inside the omp binary.
+// Internal pi-* package basenames bundled inside the pi binary.
 const PI_PACKAGE_NAMES = ["pi-agent-core", "pi-ai", "pi-coding-agent", "pi-natives", "pi-tui", "pi-utils"] as const;
 
 const PI_SCOPE_ALTERNATION = PI_SCOPE_ALIASES.join("|");
@@ -960,7 +958,7 @@ async function ensureExtensionGraphHook(entryRealPath: string): Promise<void> {
 	const alternation = [...modules].map(escapeRegExp).join("|");
 	const filter = new RegExp(`^(?:${alternation})$`);
 	Bun.plugin({
-		name: `omp:legacy-pi-ext:${Bun.hash(entryRealPath).toString(36)}`,
+		name: `pi:legacy-pi-ext:${Bun.hash(entryRealPath).toString(36)}`,
 		setup(build) {
 			build.onLoad({ filter, namespace: "file" }, async args => {
 				const raw = await Bun.file(args.path).text();
@@ -1045,7 +1043,7 @@ export function installLegacyPiSpecifierShim(): void {
 	isLegacyPiSpecifierShimInstalled = true;
 
 	Bun.plugin({
-		name: "omp:legacy-pi-shim",
+		name: "pi:legacy-pi-shim",
 		setup(build) {
 			build.onResolve({ filter: LEGACY_PI_SPECIFIER_FILTER, namespace: "file" }, resolveLegacyPiSpecifier);
 			build.onResolve({ filter: TYPEBOX_SPECIFIER_FILTER, namespace: "file" }, resolveTypeBoxSpecifier);

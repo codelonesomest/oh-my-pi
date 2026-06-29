@@ -7,7 +7,7 @@
       //
       // Two boot paths share this template:
       //  - Static export: session JSON rides base64-embedded in #session-data.
-      //  - Share viewer: share-loader.js sets `window.__OMP_SESSION_DATA__` to
+      //  - Share viewer: share-loader.js sets `window.__PI_SESSION_DATA__` to
       //    a promise resolving to the session JSON (fetched + decrypted).
       // The entire app lives in bootSession(); its body keeps the original
       // one-level indentation to avoid a whole-file reindent.
@@ -1613,7 +1613,7 @@
         messages.appendChild(div);
       }
 
-      const pending = window.__OMP_SESSION_DATA__;
+      const pending = window.__PI_SESSION_DATA__;
       if (pending && typeof pending.then === 'function') {
         pending.then(bootSession, showLoadError);
       } else {

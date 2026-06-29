@@ -39,7 +39,7 @@ async function main() {
 	const client = new RpcClient({
 		cliPath: path.join(projectRoot, "src/cli.ts"),
 		cwd: projectRoot,
-		env: { PI_CODING_AGENT_DIR: sessionDir },
+		env: { XDG_CONFIG_HOME: sessionDir },
 		args: ["--no-color"],
 	});
 

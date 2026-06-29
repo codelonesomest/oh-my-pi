@@ -43,7 +43,7 @@ export interface Provider<T> {
 	/**
 	 * Priority (higher = checked first, wins on conflicts).
 	 * Suggested ranges:
-	 *   100+ : Primary providers (omp, pi)
+	 *   100+ : Primary providers (pi, pi)
 	 *   50-99: Tool-specific providers (claude, codex, gemini)
 	 *   1-49 : Shared standards (mcp-json, agents-md)
 	 */

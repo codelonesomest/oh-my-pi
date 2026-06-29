@@ -232,7 +232,10 @@ impl JobManager {
 	///
 	/// * `pid` - The process ID to resolve.
 	pub fn resolve_process_id(&mut self, pid: i32) -> Option<&mut Job> {
-		self.jobs.iter_mut().find(|job| job.contains_process_id(pid))
+		self
+			.jobs
+			.iter_mut()
+			.find(|job| job.contains_process_id(pid))
 	}
 
 	/// Waits for all managed jobs to complete.
@@ -282,11 +285,7 @@ impl JobManager {
 				}
 				if matches!(self.jobs[i].state, JobState::Done) {
 					let job = self.jobs.remove(i);
-					return Ok(Some(WaitedJob::from_job(
-						job,
-						ExecutionResult::success(),
-						identifier,
-					)));
+					return Ok(Some(WaitedJob::from_job(job, ExecutionResult::success(), identifier)));
 				}
 				i += 1;
 			}

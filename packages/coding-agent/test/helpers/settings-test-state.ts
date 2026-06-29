@@ -37,7 +37,7 @@ export function restoreSettingsTestState(state: SettingsTestState | undefined): 
 	setProjectDir(state.projectDir);
 	setAgentDir(state.agentDir);
 	setTuiTight(state.tuiTight);
-	restoreEnvValue("PI_CODING_AGENT_DIR", state.env.PI_CODING_AGENT_DIR);
+	restoreEnvValue("XDG_CONFIG_HOME", state.env.XDG_CONFIG_HOME);
 }
 
 function restoreEnv(snapshot: Record<string, string | undefined>): void {

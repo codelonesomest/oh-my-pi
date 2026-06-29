@@ -3,7 +3,7 @@
   "name": "@oh-my-pi/pi-mnemopi",
   "version": "16.2.2",
   "description": "Local SQLite memory engine for Oh My Pi agents",
-  "homepage": "https://omp.sh",
+  "homepage": "https://pi.sh",
   "author": "Can Boluk",
   "contributors": [
     "Abdias J"

@@ -33,21 +33,21 @@ describe("legacy-pi bundled virtual module synthesizer (issue #3423)", () => {
 	it("emits one ES named export per enumerable namespace key", () => {
 		const src = __synthesizeLegacyPiBundledSourceWithRegistry("@oh-my-pi/pi-coding-agent", registry);
 		expect(src).toContain(
-			`const __omp_bundled = globalThis[${JSON.stringify(globalKey)}]["@oh-my-pi/pi-coding-agent"];`,
+			`const __pi_bundled = globalThis[${JSON.stringify(globalKey)}]["@oh-my-pi/pi-coding-agent"];`,
 		);
-		expect(src).toContain('export const VERSION = __omp_bundled["VERSION"];');
-		expect(src).toContain('export const defineTool = __omp_bundled["defineTool"];');
-		expect(src).toContain('export const Type = __omp_bundled["Type"];');
+		expect(src).toContain('export const VERSION = __pi_bundled["VERSION"];');
+		expect(src).toContain('export const defineTool = __pi_bundled["defineTool"];');
+		expect(src).toContain('export const Type = __pi_bundled["Type"];');
 		// Every named export emerges from a live registry lookup — never the FS.
 		expect(src).not.toMatch(/\$bunfs|file:\/\//);
 	});
 
 	it("forwards `default` through `export default` so default imports survive", () => {
 		const src = __synthesizeLegacyPiBundledSourceWithRegistry("@oh-my-pi/pi-utils", registry);
-		expect(src).toContain("export default __omp_bundled.default;");
+		expect(src).toContain("export default __pi_bundled.default;");
 		// Default and named exports coexist on the same module.
-		expect(src).toContain('export const VERSION = __omp_bundled["VERSION"];');
-		expect(src).toContain('export const isCompiledBinary = __omp_bundled["isCompiledBinary"];');
+		expect(src).toContain('export const VERSION = __pi_bundled["VERSION"];');
+		expect(src).toContain('export const isCompiledBinary = __pi_bundled["isCompiledBinary"];');
 	});
 
 	it("omits `default` line when the registered namespace has no default export", () => {
@@ -66,7 +66,7 @@ describe("legacy-pi bundled virtual module synthesizer (issue #3423)", () => {
 		// writes to — a rename of either side breaks every legacy extension
 		// load with a `Cannot read properties of undefined` at first import.
 		const src = __synthesizeLegacyPiBundledSourceWithRegistry("typebox", registry);
-		expect(src.startsWith(`const __omp_bundled = globalThis[${JSON.stringify(globalKey)}]["typebox"];`)).toBe(true);
+		expect(src.startsWith(`const __pi_bundled = globalThis[${JSON.stringify(globalKey)}]["typebox"];`)).toBe(true);
 	});
 
 	it("end-to-end: synthesized source resolves named bindings against a runtime globalThis entry", () => {
@@ -79,12 +79,12 @@ describe("legacy-pi bundled virtual module synthesizer (issue #3423)", () => {
 		try {
 			const src = __synthesizeLegacyPiBundledSourceWithRegistry("@oh-my-pi/pi-coding-agent", registry);
 			// Strip the ES export prefix and run the body as a plain script so
-			// we can read `__omp_bundled` from the returned closure.
+			// we can read `__pi_bundled` from the returned closure.
 			const body = src
 				.split("\n")
-				.filter(line => line.startsWith("const __omp_bundled"))
+				.filter(line => line.startsWith("const __pi_bundled"))
 				.join("\n");
-			const fn = new Function(`${body}; return __omp_bundled;`);
+			const fn = new Function(`${body}; return __pi_bundled;`);
 			const live = fn() as Record<string, unknown>;
 			expect(live.VERSION).toBe("16.1.17");
 			expect(typeof live.defineTool).toBe("function");

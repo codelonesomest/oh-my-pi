@@ -469,7 +469,7 @@ export async function commitToBranch(
 	if (!rootPatch.trim() && nestedPatches.length === 0) return null;
 
 	const repoRoot = baseline.root.repoRoot;
-	const branchName = `omp/task/${taskId}`;
+	const branchName = `pi/task/${taskId}`;
 	const fallbackMessage = description || taskId;
 
 	// Only create a branch if the root repo has changes

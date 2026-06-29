@@ -1,5 +1,5 @@
 /**
- * Shared wire types for the omp collab live-session protocol.
+ * Shared wire types for the pi collab live-session protocol.
  *
  * Dependency-free JSON shapes produced by `@oh-my-pi/pi-coding-agent`
  * (`src/collab/protocol.ts` and friends). Browser and test clients import this
@@ -389,10 +389,10 @@ export const ROOM_KEY_BYTES = 32;
 export const WRITE_TOKEN_BYTES = 16;
 
 /** Default public relay; bare `<roomId>.<key>` links resolve against it. */
-export const DEFAULT_RELAY_URL = "wss://my.omp.sh";
+export const DEFAULT_RELAY_URL = "wss://my.pi.sh";
 
 /** Default share viewer/upload base; `/share` links resolve against `<base>/<id>#<key>`. */
-export const DEFAULT_SHARE_URL = "https://my.omp.sh/s";
+export const DEFAULT_SHARE_URL = "https://my.pi.sh/s";
 
 export interface ParsedCollabLink {
 	/** wss://host[:port]/r/<roomId> — no query, no fragment. */

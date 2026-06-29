@@ -11,15 +11,15 @@ An `oh-my-pi` extension that demonstrates `tool_call` blocking. It intercepts `b
 ## Install
 
 ```
-cp -r . ~/.omp/agent/extensions/safety-hook
+cp -r . ~/.pi/agent/extensions/safety-hook
 ```
 
-Restart `omp`. The hook is active for all sessions.
+Restart `pi`. The hook is active for all sessions.
 
 Or load once:
 
 ```
-omp --extension ./safety-hook
+pi --extension ./safety-hook
 ```
 
 ## How it works

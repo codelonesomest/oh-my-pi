@@ -1,5 +1,5 @@
 /**
- * Routing tests for `omp plugin install <local-path>` (#1945).
+ * Routing tests for `pi plugin install <local-path>` (#1945).
  *
  * Two layers of coverage:
  *  1. Spy-based: `runPluginCommand` with a local path calls
@@ -40,7 +40,7 @@ async function createLocalPlugin(root: string): Promise<string> {
 		JSON.stringify({
 			name: "kimi-datasource",
 			version: "1.0.0",
-			omp: { extensions: ["./src/extension.ts"] },
+			pi: { extensions: ["./src/extension.ts"] },
 		}),
 	);
 	return localPlugin;
@@ -57,7 +57,7 @@ describe("runPluginCommand({ action: 'install', args: [<local>] })", () => {
 		spyOn(piUtils, "getPluginsDir").mockReturnValue(pluginsDir);
 		spyOn(piUtils, "getPluginsNodeModules").mockReturnValue(path.join(pluginsDir, "node_modules"));
 		spyOn(piUtils, "getPluginsPackageJson").mockReturnValue(path.join(pluginsDir, "package.json"));
-		spyOn(piUtils, "getPluginsLockfile").mockReturnValue(path.join(tmpRoot, "omp-plugins.lock.json"));
+		spyOn(piUtils, "getPluginsLockfile").mockReturnValue(path.join(tmpRoot, "pi-plugins.lock.json"));
 		spyOn(piUtils, "getProjectDir").mockReturnValue(tmpRoot);
 		spyOn(piUtils, "getProjectPluginOverridesPath").mockReturnValue(path.join(tmpRoot, "plugin-overrides.json"));
 		// runPluginCommand always builds a MarketplaceManager to enumerate
@@ -127,7 +127,7 @@ describe("runPluginCommand({ action: 'install', args: [<local>] })", () => {
 		// End-to-end: stage a real plugin folder, route through plugin-cli
 		// (no spies on PluginManager.link), and verify the resulting symlink
 		// + lockfile entry. Pins the contract that local-path installs
-		// symlink rather than copy-install, matching `omp plugin link`.
+		// symlink rather than copy-install, matching `pi plugin link`.
 		const localPlugin = await createLocalPlugin(tmpRoot);
 
 		await runPluginCommand({ action: "install", args: [localPlugin], flags: { json: true } });
@@ -137,7 +137,7 @@ describe("runPluginCommand({ action: 'install', args: [<local>] })", () => {
 		expect(stat.isSymbolicLink()).toBe(true);
 		expect(await fs.readlink(linkTarget)).toBe(localPlugin);
 
-		const lock = await Bun.file(path.join(tmpRoot, "omp-plugins.lock.json")).json();
+		const lock = await Bun.file(path.join(tmpRoot, "pi-plugins.lock.json")).json();
 		expect(lock.plugins["kimi-datasource"]).toEqual({
 			version: "1.0.0",
 			enabledFeatures: null,
@@ -172,7 +172,7 @@ describe("runPluginCommand({ action: 'install', args: [<local>] })", () => {
 		const checks = await manager.doctor({ fix: true });
 
 		expect(checks.find(check => check.name === "orphan:kimi-datasource")).toBeUndefined();
-		const lock = await Bun.file(path.join(tmpRoot, "omp-plugins.lock.json")).json();
+		const lock = await Bun.file(path.join(tmpRoot, "pi-plugins.lock.json")).json();
 		expect(lock.plugins["kimi-datasource"]).toEqual({
 			version: "1.0.0",
 			enabledFeatures: null,

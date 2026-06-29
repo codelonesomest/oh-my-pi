@@ -7,6 +7,7 @@ import type { MCPServerConfig } from "@oh-my-pi/pi-coding-agent/mcp/types";
 import { MCPCommandController } from "@oh-my-pi/pi-coding-agent/modes/controllers/mcp-command-controller";
 import { initTheme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
 import {
+	getAgentDir,
 	getConfigRootDir,
 	getMCPConfigPath,
 	getProjectDir,
@@ -16,19 +17,15 @@ import {
 } from "@oh-my-pi/pi-utils";
 
 const originalProjectDir = getProjectDir();
-const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
+const originalAgentDir = getAgentDir();
 const fallbackAgentDir = path.join(getConfigRootDir(), "agent");
 
 function restoreAgentDir(): void {
 	if (originalAgentDir) {
 		setAgentDir(originalAgentDir);
-		process.env.PI_CODING_AGENT_DIR = originalAgentDir;
-		Bun.env.PI_CODING_AGENT_DIR = originalAgentDir;
 		return;
 	}
 	setAgentDir(fallbackAgentDir);
-	delete process.env.PI_CODING_AGENT_DIR;
-	delete Bun.env.PI_CODING_AGENT_DIR;
 }
 
 function createController() {

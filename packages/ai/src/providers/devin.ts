@@ -460,7 +460,7 @@ function buildDevinChatRequest(
 	});
 }
 
-/** Map omp `Message` history onto Cascade `ChatMessagePrompt`s (USER / SYSTEM / TOOL channels). */
+/** Map pi `Message` history onto Cascade `ChatMessagePrompt`s (USER / SYSTEM / TOOL channels). */
 function buildChatMessagePrompts(messages: Message[], cascadeId: string): ChatMessagePrompt[] {
 	const prompts: ChatMessagePrompt[] = [];
 	// messageId seeds are `cascadeId\0index\0role[...]` — prompt text is excluded

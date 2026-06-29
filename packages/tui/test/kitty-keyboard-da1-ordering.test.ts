@@ -4,7 +4,7 @@ import {
 	type ProcessTerminalRenderHarness,
 } from "./process-terminal-render-harness";
 
-// Progressive-enhancement probe ordering contract. omp sends `CSI ? u \\ CSI c`
+// Progressive-enhancement probe ordering contract. pi sends `CSI ? u \\ CSI c`
 // at startup: the kitty reply (`CSI ? <flags> u`) authoritatively says the
 // terminal speaks the kitty keyboard protocol; the DA1 reply (`CSI ? ... c`)
 // is only a sentinel that guarantees a reply even from terminals that ignore

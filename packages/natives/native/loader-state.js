@@ -105,14 +105,14 @@ export function getAddonFilenames({ tag, arch, variant }) {
 
 /**
  * Decide whether the loader should mirror the package's `native/<filename>.node`
- * into the per-version cache directory (`~/.omp/natives/<version>/`) before loading.
+ * into the per-version cache directory (`~/.pi/natives/<version>/`) before loading.
  *
- * Windows-only safety net for `bun install -g` updates: when a previous `omp`
+ * Windows-only safety net for `bun install -g` updates: when a previous `pi`
  * process is running, bun cannot overwrite the locked `.node` inside
  * `node_modules/@oh-my-pi/pi-natives/native/`, leaving an old binary next to a
  * newer `index.js` and producing `<sym> is not a function` crashes on the next
  * launch. Staging into the version-pinned cache:
- *   1. Gives every package version its own filesystem path, so concurrent omp
+ *   1. Gives every package version its own filesystem path, so concurrent pi
  *      processes never collide on the same file.
  *   2. Makes the running process keep its handle on the cache copy, freeing bun
  *      to overwrite the `node_modules` copy on subsequent updates.
@@ -602,12 +602,12 @@ function validateLoadedBindings(ctx, bindings, candidate) {
  * Install the addon's bounded Tokio runtime now that `dlopen` has returned and
  * the dynamic-loader lock is released. The Rust `#[module_init]` deliberately
  * does NOT build the runtime — spawning worker threads under the loader lock
- * deadlocks on some hosts — so it exposes `__ompInstallTokioRuntime` for the
+ * deadlocks on some hosts — so it exposes `__piInstallTokioRuntime` for the
  * loader to call once, before any async native runs. Best-effort: older addons
  * predating this export simply fall back to napi-rs's default runtime.
  */
 function installNativeTokioRuntime(bindings) {
-	const install = bindings.__ompInstallTokioRuntime;
+	const install = bindings.__piInstallTokioRuntime;
 	if (typeof install !== "function") return;
 	try {
 		install();

@@ -8,7 +8,11 @@ import {
 	findBestKeptMetric,
 	reconstructControlState,
 } from "@oh-my-pi/pi-coding-agent/autoresearch/state";
-import { AutoresearchStorage, closeAllAutoresearchStorages } from "@oh-my-pi/pi-coding-agent/autoresearch/storage";
+import {
+	AutoresearchStorage,
+	closeAllAutoresearchStorages,
+	openAutoresearchStorage,
+} from "@oh-my-pi/pi-coding-agent/autoresearch/storage";
 import type { ExperimentResult } from "@oh-my-pi/pi-coding-agent/autoresearch/types";
 import type {
 	ExtensionAPI,
@@ -511,18 +515,79 @@ function createCommandHarness(
 	return { command, ctx, execCalls, sentMessages, notifications };
 }
 
+describe("autoresearch storage env override", () => {
+	const originalPiDbDir = process.env.PI_AUTORESEARCH_DB_DIR;
+	const originalOmpDbDir = process.env.OMP_AUTORESEARCH_DB_DIR;
+	const cleanups: TempDir[] = [];
+
+	function restoreEnv(name: "PI_AUTORESEARCH_DB_DIR" | "OMP_AUTORESEARCH_DB_DIR", value: string | undefined): void {
+		if (value === undefined) {
+			delete process.env[name];
+			return;
+		}
+		process.env[name] = value;
+	}
+
+	function tempDir(): TempDir {
+		const dir = makeTempDir();
+		cleanups.push(dir);
+		return dir;
+	}
+
+	beforeEach(() => {
+		delete process.env.PI_AUTORESEARCH_DB_DIR;
+		delete process.env.OMP_AUTORESEARCH_DB_DIR;
+	});
+
+	afterEach(() => {
+		closeAllAutoresearchStorages();
+		restoreEnv("PI_AUTORESEARCH_DB_DIR", originalPiDbDir);
+		restoreEnv("OMP_AUTORESEARCH_DB_DIR", originalOmpDbDir);
+		for (const dir of cleanups.splice(0)) dir.removeSync();
+	});
+
+	it("uses PI_AUTORESEARCH_DB_DIR before legacy OMP_AUTORESEARCH_DB_DIR", async () => {
+		const cwd = tempDir();
+		const primary = tempDir();
+		const legacy = tempDir();
+		process.env.PI_AUTORESEARCH_DB_DIR = primary.path();
+		process.env.OMP_AUTORESEARCH_DB_DIR = legacy.path();
+
+		const storage = await openAutoresearchStorage(cwd.path());
+
+		expect(storage.dbPath.startsWith(primary.path())).toBe(true);
+		expect(storage.projectDir.startsWith(primary.path())).toBe(true);
+		expect(storage.dbPath.startsWith(legacy.path())).toBe(false);
+	});
+
+	it("uses legacy OMP_AUTORESEARCH_DB_DIR when PI_AUTORESEARCH_DB_DIR is unset or empty", async () => {
+		const cwd = tempDir();
+		const emptyPiCwd = tempDir();
+		const legacy = tempDir();
+		process.env.OMP_AUTORESEARCH_DB_DIR = legacy.path();
+
+		const unset = await openAutoresearchStorage(cwd.path());
+		expect(unset.dbPath.startsWith(legacy.path())).toBe(true);
+
+		closeAllAutoresearchStorages();
+		process.env.PI_AUTORESEARCH_DB_DIR = "   ";
+		const empty = await openAutoresearchStorage(emptyPiCwd.path());
+		expect(empty.dbPath.startsWith(legacy.path())).toBe(true);
+	});
+});
+
 describe("autoresearch slash command", () => {
 	const cleanups: TempDir[] = [];
 	let dbOverride: TempDir | undefined;
 
 	beforeEach(() => {
 		dbOverride = TempDir.createSync("@pi-autoresearch-cmd-");
-		process.env.OMP_AUTORESEARCH_DB_DIR = dbOverride.path();
+		process.env.PI_AUTORESEARCH_DB_DIR = dbOverride.path();
 		cleanups.push(dbOverride);
 	});
 
 	afterEach(() => {
-		delete process.env.OMP_AUTORESEARCH_DB_DIR;
+		delete process.env.PI_AUTORESEARCH_DB_DIR;
 		closeAllAutoresearchStorages();
 		for (const dir of cleanups.splice(0)) {
 			dir.removeSync();
@@ -584,12 +649,12 @@ describe("autoresearch tool-call hook", () => {
 
 	beforeEach(() => {
 		dbOverride = TempDir.createSync("@pi-autoresearch-hook-");
-		process.env.OMP_AUTORESEARCH_DB_DIR = dbOverride.path();
+		process.env.PI_AUTORESEARCH_DB_DIR = dbOverride.path();
 		cleanups.push(dbOverride);
 	});
 
 	afterEach(() => {
-		delete process.env.OMP_AUTORESEARCH_DB_DIR;
+		delete process.env.PI_AUTORESEARCH_DB_DIR;
 		closeAllAutoresearchStorages();
 		for (const dir of cleanups.splice(0)) {
 			dir.removeSync();

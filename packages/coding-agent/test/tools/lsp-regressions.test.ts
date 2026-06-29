@@ -488,7 +488,7 @@ describe("lsp regressions", () => {
 	it("answers defined server→client requests with spec no-op results", async () => {
 		// Same failure class as #3029: a defined server→client request
 		// (window/showMessage{Request}, window/showDocument, workspace/*/refresh)
-		// must receive a spec-shaped reply, not a -32601. Headless omp can't
+		// must receive a spec-shaped reply, not a -32601. Headless pi can't
 		// surface UI prompts but still owes a defined no-op.
 		const tempDir = TempDir.createSync("@omp-lsp-server-requests-");
 		try {
@@ -1784,14 +1784,14 @@ describe("lsp regressions", () => {
 	});
 
 	it("round-trips file URIs containing percent and hash characters", () => {
-		const tricky = path.resolve(os.tmpdir(), "omp uri", "100% #1.ts");
+		const tricky = path.resolve(os.tmpdir(), "pi uri", "100% #1.ts");
 		const uri = fileToUri(tricky);
 		// Percent-encoded so the server cannot misparse a fragment or escape.
 		expect(uri).not.toContain("#");
 		expect(uri).not.toContain(" ");
 		expect(uriToFile(uri)).toBe(tricky);
 		// Lax servers sending unencoded paths are tolerated.
-		const plain = path.resolve(os.tmpdir(), "omp uri", "plain.ts");
+		const plain = path.resolve(os.tmpdir(), "pi uri", "plain.ts");
 		expect(uriToFile(fileToUri(plain).replaceAll("%20", " "))).toBe(plain);
 	});
 
@@ -2099,9 +2099,9 @@ describe("lsp regressions", () => {
 		expect(output).toContain("typescript-language-server (ready)");
 	});
 
-	it("reload * invalidates the per-cwd config cache so newly written .omp/lsp.json is observed", async () => {
+	it("reload * invalidates the per-cwd config cache so newly written .pi/lsp.json is observed", async () => {
 		// #3546: `getConfig` caches the first `loadConfig` result per cwd
-		// permanently. Creating `.omp/lsp.json` after the first LSP call left
+		// permanently. Creating `.pi/lsp.json` after the first LSP call left
 		// the tool stuck on "No language servers configured" until the process
 		// restarted. `reload *` (the user's explicit refresh) must invalidate
 		// that cache so subsequent calls observe the fresh config from disk.

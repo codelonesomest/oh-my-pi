@@ -692,9 +692,9 @@ describe("hindsightBackend live bank routing", () => {
 	});
 
 	// Companion case: when `hindsight.scoping` is `global`, clearing the
-	// non-empty bankId should restore the bare `omp` default — the operator's
+	// non-empty bankId should restore the bare `pi` default — the operator's
 	// stated expectation in the live repro from #1902.
-	it("routes future retains to the bare omp bank when bankId is cleared in global scoping", async () => {
+	it("routes future retains to the bare pi bank when bankId is cleared in global scoping", async () => {
 		const retainBatchSpy = vi.spyOn(HindsightApi.prototype, "retainBatch").mockResolvedValue({} as never);
 		vi.spyOn(HindsightApi.prototype, "createBank").mockResolvedValue({} as never);
 		const settings = Settings.isolated({

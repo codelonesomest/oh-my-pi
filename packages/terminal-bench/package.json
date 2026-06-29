@@ -3,8 +3,8 @@
   "private": true,
   "name": "@oh-my-pi/terminal-bench",
   "version": "0.0.1",
-  "description": "Run harbor-framework/terminal-bench-2 against the local omp build with a live progress/spend/success dashboard",
-  "homepage": "https://omp.sh",
+  "description": "Run harbor-framework/terminal-bench-2 against the local pi build with a live progress/spend/success dashboard",
+  "homepage": "https://pi.sh",
   "author": "Can Boluk",
   "license": "MIT",
   "repository": {

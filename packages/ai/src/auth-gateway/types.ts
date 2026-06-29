@@ -9,9 +9,9 @@ import type {
 } from "../types";
 
 /**
- * Wire types for the omp auth-gateway.
+ * Wire types for the pi auth-gateway.
  *
- * The gateway sits between unauthenticated clients (containerized omp,
+ * The gateway sits between unauthenticated clients (containerized pi,
  * llm-git, …) and the broker. It accepts provider-format HTTP requests
  * (OpenAI chat-completions / Anthropic messages / OpenAI Responses),
  * dispatches them through pi-ai's `streamSimple()`, and translates the
