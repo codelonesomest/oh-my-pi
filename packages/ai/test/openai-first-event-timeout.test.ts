@@ -113,7 +113,7 @@ function createSseResponse(events: unknown[]): Response {
 	});
 }
 
-function createNoProgressOpenAIResponsesStream(signal: AbortSignal | undefined): Response {
+function createOpenAIResponsesStreamWithInitialProgressThenKeepalives(signal: AbortSignal | undefined): Response {
 	const encoder = new TextEncoder();
 	let interval: NodeJS.Timeout | undefined;
 	let abortListener: (() => void) | undefined;
@@ -452,9 +452,9 @@ describe("OpenAI-family first-event timeouts", () => {
 		}
 	});
 
-	it("times out OpenAI responses streams that only emit no-progress status events", async () => {
+	it("times out OpenAI responses streams after initial progress when only no-progress status events continue", async () => {
 		const fetchMock: FetchImpl = (input: string | URL | Request, init?: RequestInit) =>
-			Promise.resolve(createNoProgressOpenAIResponsesStream(getRequestSignal(input, init)));
+			Promise.resolve(createOpenAIResponsesStreamWithInitialProgressThenKeepalives(getRequestSignal(input, init)));
 
 		const result = await streamOpenAIResponses(openAIResponsesModel, baseContext(), {
 			apiKey: "test-key",
@@ -567,9 +567,9 @@ describe("OpenAI-family first-event timeouts", () => {
 		);
 	});
 
-	it("times out Azure responses streams that only emit no-progress status events", async () => {
+	it("times out Azure OpenAI responses streams after initial progress when only no-progress status events continue", async () => {
 		const fetchMock: FetchImpl = (input: string | URL | Request, init?: RequestInit) =>
-			Promise.resolve(createNoProgressOpenAIResponsesStream(getRequestSignal(input, init)));
+			Promise.resolve(createOpenAIResponsesStreamWithInitialProgressThenKeepalives(getRequestSignal(input, init)));
 		const controller = new AbortController();
 		const abortTimer = setTimeout(() => controller.abort(new Error("fallback abort")), 200);
 		abortTimer.unref();
@@ -805,7 +805,7 @@ describe("OpenAI-family first-event timeouts", () => {
 			compat: { streamIdleTimeoutMs: 20 },
 		});
 
-		const fetchMock = () => Promise.resolve(createNoProgressOpenAIResponsesStream(undefined));
+		const fetchMock = () => Promise.resolve(createOpenAIResponsesStreamWithInitialProgressThenKeepalives(undefined));
 		const result = await streamOpenAIResponses(customResponsesModel, baseContext(), {
 			apiKey: "test-key",
 			fetch: fetchMock as any,
