@@ -113,7 +113,9 @@ function parseWmicTable(output: string, header: string): string | null {
 const SYSTEM_PROMPT_PREP_TIMEOUT_MS = 5000;
 /** Kept below prep timeout so timed-out probes can still write the null cache before fallback. */
 const GPU_PROBE_TIMEOUT_MS = SYSTEM_PROMPT_PREP_TIMEOUT_MS - 500;
-/** Drop stdout from a probe descendant that inherited the pipe after the probe exited. */
+/** Allow a successful probe a short window to produce stdout before we assume only a descendant still owns the pipe. */
+const GPU_PROBE_STDOUT_FIRST_BYTE_MS = 1000;
+/** After the first bytes arrive, keep a short bounded drain for trailing stdout before canceling an inherited pipe. */
 const GPU_PROBE_STDOUT_DRAIN_MS = 250;
 
 async function runGpuProbe(cmd: string[]): Promise<string | null> {
@@ -131,16 +133,22 @@ async function runGpuProbe(cmd: string[]): Promise<string | null> {
 		const stdoutReader = proc.stdout.getReader();
 		let stdout = "";
 		const decoder = new TextDecoder();
-		const firstChunk = Promise.withResolvers<void>();
-		let firstChunkSettled = false;
+		const firstStdout = Promise.withResolvers<"chunk" | "eof">();
+		let firstStdoutSettled = false;
 		const stdoutDone = (async () => {
 			while (true) {
 				const chunk = await stdoutReader.read();
-				if (chunk.done) break;
+				if (chunk.done) {
+					if (!firstStdoutSettled) {
+						firstStdoutSettled = true;
+						firstStdout.resolve("eof");
+					}
+					break;
+				}
 				stdout += decoder.decode(chunk.value, { stream: true });
-				if (!firstChunkSettled) {
-					firstChunkSettled = true;
-					firstChunk.resolve();
+				if (!firstStdoutSettled) {
+					firstStdoutSettled = true;
+					firstStdout.resolve("chunk");
 				}
 			}
 			stdout += decoder.decode();
@@ -148,23 +156,21 @@ async function runGpuProbe(cmd: string[]): Promise<string | null> {
 		})().catch(() => "err" as const);
 		const exitCode = await proc.exited;
 		// Even on exit 0, a probe wrapper can leave a descendant holding stdout open.
-		// Bound the EOF wait so getCachedGpu cannot outlive the probe in either path.
-		// After a successful exit, first wait until EOF, the first captured bytes, or
-		// the drain timeout fires before deciding whether to cancel an inherited pipe.
+		// First wait a bounded window for either EOF or the first captured bytes, then
+		// keep a second bounded drain so delayed-but-valid stdout still lands.
 		let drained: "ok" | "err" | "timeout";
 		if (exitCode === 0) {
-			const ready = await Promise.race([
+			const firstStdoutState = await Promise.race([
 				stdoutDone,
-				firstChunk.promise.then(() => "chunk" as const),
-				Bun.sleep(GPU_PROBE_STDOUT_DRAIN_MS).then(() => "timeout" as const),
+				firstStdout.promise,
+				Bun.sleep(GPU_PROBE_STDOUT_FIRST_BYTE_MS).then(() => "timeout" as const),
 			]);
 			drained =
-				ready === "chunk"
-					? await Promise.race([
-							stdoutDone,
-							Bun.sleep(GPU_PROBE_STDOUT_DRAIN_MS).then(() => "timeout" as const),
-						])
-					: ready;
+				firstStdoutState === "chunk"
+					? await Promise.race([stdoutDone, Bun.sleep(GPU_PROBE_STDOUT_DRAIN_MS).then(() => "timeout" as const)])
+					: firstStdoutState === "eof"
+						? "ok"
+						: firstStdoutState;
 		} else {
 			drained = await Promise.race([
 				stdoutDone,

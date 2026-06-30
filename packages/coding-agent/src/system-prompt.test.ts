@@ -15,6 +15,7 @@ async function runProbeScenario(options: {
 	sleepSeconds?: number;
 	holdStdoutOpen?: boolean;
 	descendantHoldsStdout?: boolean;
+	descendantValidOutputDelaySeconds?: number;
 	validOutput?: string;
 }): Promise<ProbeRunResult> {
 	const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "omp-gpu-probe-"));
@@ -27,7 +28,23 @@ async function runProbeScenario(options: {
 		const lspciPath = path.join(binDir, "lspci");
 		await Bun.write(
 			lspciPath,
-			'#!/usr/bin/env sh\nprintf x >> "$OMP_GPU_PROBE_COUNT"\nif [ -n "$OMP_GPU_PROBE_VALID_OUTPUT" ]; then printf "%s\\n" "$OMP_GPU_PROBE_VALID_OUTPUT"; fi\nif [ "$OMP_GPU_PROBE_DESCENDANT_HOLDS_STDOUT" = "true" ]; then sleep "$OMP_GPU_PROBE_SLEEP" & exit 0; fi\nif [ "$OMP_GPU_PROBE_HOLD_STDOUT_OPEN" = "true" ]; then sleep "$OMP_GPU_PROBE_SLEEP" & wait "$!"; fi\nif [ -n "$OMP_GPU_PROBE_SLEEP" ]; then exec sleep "$OMP_GPU_PROBE_SLEEP"; fi\nexit 0\n',
+			[
+				"#!/usr/bin/env sh",
+				'printf x >> "$OMP_GPU_PROBE_COUNT"',
+				'if [ -n "$OMP_GPU_PROBE_DESCENDANT_VALID_OUTPUT_DELAY" ]; then',
+				"  (",
+				'    sleep "$OMP_GPU_PROBE_DESCENDANT_VALID_OUTPUT_DELAY"',
+				'    if [ -n "$OMP_GPU_PROBE_VALID_OUTPUT" ]; then printf "%s\\n" "$OMP_GPU_PROBE_VALID_OUTPUT"; fi',
+				'    if [ -n "$OMP_GPU_PROBE_SLEEP" ]; then sleep "$OMP_GPU_PROBE_SLEEP"; fi',
+				"  ) &",
+				"  exit 0",
+				"fi",
+				'if [ -n "$OMP_GPU_PROBE_VALID_OUTPUT" ]; then printf "%s\\n" "$OMP_GPU_PROBE_VALID_OUTPUT"; fi',
+				'if [ "$OMP_GPU_PROBE_DESCENDANT_HOLDS_STDOUT" = "true" ]; then sleep "$OMP_GPU_PROBE_SLEEP" & exit 0; fi',
+				'if [ "$OMP_GPU_PROBE_HOLD_STDOUT_OPEN" = "true" ]; then sleep "$OMP_GPU_PROBE_SLEEP" & wait "$!"; fi',
+				'if [ -n "$OMP_GPU_PROBE_SLEEP" ]; then exec sleep "$OMP_GPU_PROBE_SLEEP"; fi',
+				"exit 0",
+			].join("\n"),
 		);
 		await fs.chmod(lspciPath, 0o755);
 
@@ -95,6 +112,11 @@ console.log(JSON.stringify({ elapsedMs: Math.round(performance.now() - startedAt
 		} else {
 			delete env.OMP_GPU_PROBE_VALID_OUTPUT;
 		}
+		if (options.descendantValidOutputDelaySeconds === undefined) {
+			delete env.OMP_GPU_PROBE_DESCENDANT_VALID_OUTPUT_DELAY;
+		} else {
+			env.OMP_GPU_PROBE_DESCENDANT_VALID_OUTPUT_DELAY = String(options.descendantValidOutputDelaySeconds);
+		}
 
 		const childStartedAt = performance.now();
 		const child = Bun.spawn([process.execPath, scenarioPath], { stdout: "pipe", stderr: "pipe", env });
@@ -152,6 +174,22 @@ describe.skipIf(process.platform !== "linux")("system prompt GPU probe", () => {
 		// Probe exited 0 with valid output before bg sleep held stdout open.
 		// Captured stdout MUST be cached, not discarded as if the probe failed.
 		expect(result.cached).toEqual({ gpu: "02.0 VGA compatible controller: NVIDIA TestGPU" });
+		expect(result.elapsedMs).toBeLessThan(2000);
+		expect(result.childElapsedMs).toBeLessThan(2000);
+	}, 15_000);
+
+	it("captures delayed valid output from a descendant that keeps stdout open", async () => {
+		const result = await runProbeScenario({
+			runs: 1,
+			sleepSeconds: 3,
+			descendantValidOutputDelaySeconds: 0.4,
+			validOutput: "00:02.0 VGA compatible controller: NVIDIA DelayedGPU",
+		});
+
+		// Old behavior canceled the inherited pipe after the first 250ms window and
+		// lost this delayed-but-valid line even though the probe itself exited 0.
+		expect(result.cached).toEqual({ gpu: "02.0 VGA compatible controller: NVIDIA DelayedGPU" });
+		expect(result.elapsedMs).toBeGreaterThanOrEqual(350);
 		expect(result.elapsedMs).toBeLessThan(2000);
 		expect(result.childElapsedMs).toBeLessThan(2000);
 	}, 15_000);
