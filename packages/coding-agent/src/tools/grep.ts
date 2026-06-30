@@ -85,26 +85,8 @@ const searchSchema = type({
 });
 
 export type GrepToolInput = typeof searchSchema.infer;
-function parseStringEncodedPathArray(input: string): string[] | null {
-	const trimmed = input.trim();
-	if (!trimmed.startsWith("[") || !trimmed.endsWith("]")) return null;
-
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(trimmed);
-	} catch {
-		return null;
-	}
-
-	if (!Array.isArray(parsed) || parsed.some(entry => typeof entry !== "string")) {
-		return null;
-	}
-	return parsed;
-}
-
 export function toPathList(input: string | string[] | undefined): string[] {
-	if (typeof input === "string") return parseStringEncodedPathArray(input) ?? [input];
-	return input ?? [];
+	return typeof input === "string" ? [input] : (input ?? []);
 }
 
 /** Maximum number of distinct files surfaced in a single response. The

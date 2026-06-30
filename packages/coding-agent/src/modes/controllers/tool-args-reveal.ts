@@ -144,7 +144,7 @@ export class ToolArgsRevealController {
 			entry = {
 				component: undefined,
 				target: partialJson,
-				revealed: clampSliceEnd(partialJson, partialJson.length),
+				revealed: 0,
 				rawInput,
 				exposeRawPartialJson,
 				parsedArgs: {},
