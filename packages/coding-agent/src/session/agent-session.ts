@@ -8969,6 +8969,22 @@ export class AgentSession {
 						...(snapcompactShapeSetting === "auto" ? {} : { shape }),
 						maxFrames,
 					});
+					const framePayloadBytes = this.#snapcompactFramePayloadBytes(snapcompactResult);
+					if (framePayloadBytes > snapcompact.FRAME_DATA_BYTES_BUDGET) {
+						logger.warn("Snapcompact exceeded the per-request frame payload budget", {
+							model: this.model?.id,
+							framePayloadBytes,
+							budget: snapcompact.FRAME_DATA_BYTES_BUDGET,
+						});
+						this.emitNotice(
+							"warning",
+							"snapcompact produced too much standing image payload. No LLM fallback was attempted.",
+							"compaction",
+						);
+						throw new Error(
+							"snapcompact cannot run locally: standing image payload exceeds the per-request budget.",
+						);
+					}
 					const ctxWindow = this.model?.contextWindow ?? 0;
 					const budget =
 						ctxWindow > 0
@@ -10931,7 +10947,7 @@ export class AgentSession {
 	 */
 	#computeSnapcompactMaxFrames(preparation: CompactionPreparation, settings: CompactionSettings): number {
 		const ctxWindow = this.model?.contextWindow ?? 0;
-		if (ctxWindow <= 0) return snapcompact.MAX_FRAMES_DEFAULT;
+		if (ctxWindow <= 0) return Math.min(snapcompact.MAX_FRAMES_DEFAULT, snapcompact.maxFramesForDataBudget());
 		const reserve = effectiveReserveTokens(ctxWindow, settings);
 		let baseTokens = computeNonMessageTokens(this);
 		for (const message of preparation.recentMessages) {
@@ -10970,7 +10986,16 @@ export class AgentSession {
 		const capReserve = textEdgeTokens + SUMMARY_TEMPLATE_TOKENS;
 		const frameBudget = totalBudget - baseTokens - capReserve;
 		if (frameBudget < snapcompact.FRAME_TOKEN_ESTIMATE) return 1;
-		return Math.min(Math.floor(frameBudget / snapcompact.FRAME_TOKEN_ESTIMATE), snapcompact.MAX_FRAMES_DEFAULT);
+		return Math.min(
+			Math.floor(frameBudget / snapcompact.FRAME_TOKEN_ESTIMATE),
+			snapcompact.MAX_FRAMES_DEFAULT,
+			snapcompact.maxFramesForDataBudget(),
+		);
+	}
+
+	#snapcompactFramePayloadBytes(result: snapcompact.CompactionResult): number {
+		const archive = snapcompact.getPreservedArchive(result.preserveData);
+		return archive ? snapcompact.frameDataBytes(archive.frames) : 0;
 	}
 
 	/**
@@ -10983,7 +11008,9 @@ export class AgentSession {
 	 */
 	#projectSnapcompactContextTokens(preparation: CompactionPreparation, result: snapcompact.CompactionResult): number {
 		const archive = snapcompact.getPreservedArchive(result.preserveData);
-		const blocks = archive ? snapcompact.historyBlocks(archive) : undefined;
+		const blocks = archive
+			? snapcompact.historyBlocks(archive, { maxFrameDataBytes: snapcompact.FRAME_DATA_BYTES_BUDGET })
+			: undefined;
 		const summaryMessage = createCompactionSummaryMessage(
 			result.summary,
 			result.tokensBefore,
@@ -11075,6 +11102,52 @@ export class AgentSession {
 	}
 
 	/**
+	 * Last-resort reducer when {@link #runAutoCompaction} would otherwise dead-end.
+	 * The summarizer cut at the only available turn boundary, but the kept tail is
+	 * still over the recovery band because a single recent turn (a large
+	 * tool-result, a heavy fenced/XML block) is itself bigger than the band and
+	 * `findCutPoint` cannot cut inside one message. `shake("elide")` reaches INSIDE
+	 * that tail — it offloads heavy tool-result / block content to one
+	 * `artifact://` blob and leaves a recoverable placeholder — so residual context
+	 * genuinely drops instead of the guard pausing maintenance and looping the
+	 * warning. Without it the guard would pause/warn here; with it the caller
+	 * re-tests its progress predicate after the elide pass and only falls through
+	 * to the warning when residual stays over.
+	 *
+	 * Image-only tails are out of scope: `collectShakeRegions` skips image-only
+	 * tool results and user-message images aren't counted by the local estimate
+	 * that gates the dead-end, so those still surface the warning (remedy:
+	 * `/shake images`).
+	 *
+	 * Returns the elide {@link ShakeResult} when something was offloaded (so the
+	 * caller can re-test and report), or `undefined` when nothing was eligible or
+	 * the pass aborted/failed.
+	 */
+	async #tryShakeRescueForDeadEnd(signal: AbortSignal): Promise<ShakeResult | undefined> {
+		if (signal.aborted) return undefined;
+		try {
+			const result = await this.shake("elide", { signal });
+			return result.toolResultsDropped + result.blocksDropped > 0 ? result : undefined;
+		} catch (error) {
+			logger.warn("Dead-end shake rescue failed", {
+				error: error instanceof Error ? error.message : String(error),
+			});
+			return undefined;
+		}
+	}
+
+	/** Notice describing a successful dead-end elide rescue. */
+	#emitShakeRescueNotice(result: ShakeResult): void {
+		const elided = result.toolResultsDropped + result.blocksDropped;
+		const sink = result.artifactId ? "an artifact" : "placeholders";
+		this.emitNotice(
+			"info",
+			`Compaction dead-end recovery: elided ${elided} heavy block${elided === 1 ? "" : "s"} (~${result.tokensFreed.toLocaleString()} tokens) to ${sink} so maintenance could make progress.`,
+			"compaction",
+		);
+	}
+
+	/**
 	 * Internal: Run auto-compaction with events.
 	 *
 	 * @param allowDefer If true (default), threshold-driven handoff strategy is allowed to
@@ -11107,6 +11180,7 @@ export class AgentSession {
 		const shouldAutoContinue =
 			!suppressContinuation && options.autoContinue !== false && compactionSettings.autoContinue !== false;
 		const suppressHandoff = options.suppressHandoff === true;
+		let fallbackFromShake = false;
 		// Shake runs inline (cheap, no remote LLM). On overflow recovery, if shake
 		// reclaims nothing we fall through to the summary-compaction body below so
 		// the oversized input still gets resolved.
@@ -11120,6 +11194,7 @@ export class AgentSession {
 				suppressContinuation,
 			);
 			if (outcome !== "fallback") return outcome;
+			fallbackFromShake = true;
 		}
 		// "overflow" and "incomplete" force inline execution because they are recovery
 		// paths the caller wants resolved before scheduling the next turn. "idle" is
@@ -11348,6 +11423,17 @@ export class AgentSession {
 							...(shapeSetting === "auto" ? {} : { shape }),
 							maxFrames,
 						});
+						const framePayloadBytes = this.#snapcompactFramePayloadBytes(snapcompactResult);
+						if (framePayloadBytes > snapcompact.FRAME_DATA_BYTES_BUDGET) {
+							logger.warn("Snapcompact exceeded the per-request frame payload budget", {
+								model: this.model?.id,
+								framePayloadBytes,
+								budget: snapcompact.FRAME_DATA_BYTES_BUDGET,
+							});
+							snapcompactBlocker =
+								"snapcompact produced too much standing image payload; using context-full auto-compaction instead.";
+							snapcompactResult = undefined;
+						}
 						if (snapcompactResult) {
 							const ctxWindow = this.model?.contextWindow ?? 0;
 							const budget =
@@ -11607,7 +11693,15 @@ export class AgentSession {
 				// won't include) is excluded. Reusing the auto-continue recovery band
 				// here turned recoverable overflows into manual dead-ends (#3412 review),
 				// so use the looser fit budget.
-				if (this.#compactionCreatedRetryFit()) {
+				let retryFits = this.#compactionCreatedRetryFit();
+				if (!retryFits && !fallbackFromShake) {
+					const rescue = await this.#tryShakeRescueForDeadEnd(autoCompactionSignal);
+					if (rescue && this.#compactionCreatedRetryFit()) {
+						retryFits = true;
+						this.#emitShakeRescueNotice(rescue);
+					}
+				}
+				if (retryFits) {
 					this.#scheduleAgentContinue({ delayMs: 100, generation });
 					continuationScheduled = true;
 				} else {
@@ -11621,7 +11715,15 @@ export class AgentSession {
 				// when auto-continue is disabled, a no-headroom threshold pass must still
 				// block later automatic continuations (todo reminders/session_stop hooks)
 				// from re-entering the same oversized context.
-				if (this.#compactionCreatedHeadroom()) {
+				let hasHeadroom = this.#compactionCreatedHeadroom();
+				if (!hasHeadroom && !fallbackFromShake) {
+					const rescue = await this.#tryShakeRescueForDeadEnd(autoCompactionSignal);
+					if (rescue && this.#compactionCreatedHeadroom()) {
+						hasHeadroom = true;
+						this.#emitShakeRescueNotice(rescue);
+					}
+				}
+				if (hasHeadroom) {
 					if (shouldAutoContinue) {
 						this.#scheduleAutoContinuePrompt(generation);
 						continuationScheduled = true;
@@ -11645,7 +11747,7 @@ export class AgentSession {
 			if (noProgressDeadEnd) {
 				this.emitNotice(
 					"warning",
-					"Compaction freed too little context to make progress — pausing automatic maintenance to avoid a compaction loop. The most recent turn alone is too large to reduce further; shrink it (e.g. clear large tool output) or switch to a larger-context model.",
+					"Compaction freed too little context to make progress — pausing automatic maintenance to avoid a compaction loop. The most recent turn alone is too large to reduce further; clear large tool output, run `/shake images` to drop attached images, or switch to a larger-context model.",
 					"compaction",
 				);
 			}
