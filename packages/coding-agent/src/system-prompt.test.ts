@@ -6,6 +6,7 @@ import * as path from "node:path";
 interface ProbeRunResult {
 	elapsedMs: number;
 	childElapsedMs: number;
+	cachePath: string;
 	cached: unknown;
 	count: number;
 }
@@ -24,7 +25,7 @@ async function runProbeScenario(options: {
 		const cacheRoot = path.join(tempRoot, "cache");
 		const probeCountPath = path.join(tempRoot, "probe-count");
 		await fs.mkdir(binDir, { recursive: true });
-		await fs.mkdir(path.join(cacheRoot, "omp"), { recursive: true });
+		await fs.mkdir(path.join(cacheRoot, "pi"), { recursive: true });
 		const lspciPath = path.join(binDir, "lspci");
 		await Bun.write(
 			lspciPath,
@@ -76,7 +77,7 @@ const cacheFile = Bun.file(getGpuCachePath());
 const cached = await cacheFile.exists() ? await cacheFile.json() : null;
 const countFile = Bun.file(process.env.OMP_GPU_PROBE_COUNT ?? "");
 const count = await countFile.exists() ? (await countFile.text()).length : 0;
-console.log(JSON.stringify({ elapsedMs: Math.round(performance.now() - startedAt), cached, count }));
+console.log(JSON.stringify({ elapsedMs: Math.round(performance.now() - startedAt), cached, count, cachePath: getGpuCachePath() }));
 `,
 		);
 
@@ -129,7 +130,11 @@ console.log(JSON.stringify({ elapsedMs: Math.round(performance.now() - startedAt
 		if (exitCode !== 0) {
 			throw new Error(`GPU probe scenario failed with exit ${exitCode}: ${stderr}`);
 		}
-		return { ...JSON.parse(stdout.trim()), childElapsedMs };
+		const result = JSON.parse(stdout.trim()) as Omit<ProbeRunResult, "childElapsedMs">;
+		if (!result.cachePath.startsWith(path.join(cacheRoot, "pi") + path.sep)) {
+			throw new Error(`GPU probe scenario used cache path outside temp root: ${result.cachePath}`);
+		}
+		return { ...result, childElapsedMs };
 	} finally {
 		await fs.rm(tempRoot, { recursive: true, force: true });
 	}
@@ -174,6 +179,7 @@ describe.skipIf(process.platform !== "linux")("system prompt GPU probe", () => {
 		// Probe exited 0 with valid output before bg sleep held stdout open.
 		// Captured stdout MUST be cached, not discarded as if the probe failed.
 		expect(result.cached).toEqual({ gpu: "02.0 VGA compatible controller: NVIDIA TestGPU" });
+		expect(result.count).toBe(1);
 		expect(result.elapsedMs).toBeLessThan(2000);
 		expect(result.childElapsedMs).toBeLessThan(2000);
 	}, 15_000);
@@ -189,6 +195,7 @@ describe.skipIf(process.platform !== "linux")("system prompt GPU probe", () => {
 		// Old behavior canceled the inherited pipe after the first 250ms window and
 		// lost this delayed-but-valid line even though the probe itself exited 0.
 		expect(result.cached).toEqual({ gpu: "02.0 VGA compatible controller: NVIDIA DelayedGPU" });
+		expect(result.count).toBe(1);
 		expect(result.elapsedMs).toBeGreaterThanOrEqual(350);
 		expect(result.elapsedMs).toBeLessThan(2000);
 		expect(result.childElapsedMs).toBeLessThan(2000);
