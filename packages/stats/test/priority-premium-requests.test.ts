@@ -1,56 +1,14 @@
 import { Database } from "bun:sqlite";
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { syncAllSessions } from "@oh-my-pi/omp-stats/aggregator";
 import { closeDb, getOverallStats, getRecentRequests } from "@oh-my-pi/omp-stats/db";
 import { parseSessionFile } from "@oh-my-pi/omp-stats/parser";
-import { getAgentDir, getSessionsDir, getStatsDbPath, setAgentDir, TempDir } from "@oh-my-pi/pi-utils";
+import { getSessionsDir, getStatsDbPath } from "@oh-my-pi/pi-utils";
+import { installStatsTestIsolation } from "./helpers/temp-agent";
 
-const originalAgentDir = getAgentDir();
-const originalHome = process.env.HOME;
-const originalXdg: Record<string, string | undefined> = {
-	XDG_DATA_HOME: process.env.XDG_DATA_HOME,
-	XDG_STATE_HOME: process.env.XDG_STATE_HOME,
-	XDG_CACHE_HOME: process.env.XDG_CACHE_HOME,
-};
-let tempDir: TempDir | null = null;
-
-async function resetStatsDb(): Promise<void> {
-	const dbPath = getStatsDbPath();
-	await Promise.all([
-		fs.rm(dbPath, { force: true }),
-		fs.rm(`${dbPath}-wal`, { force: true }),
-		fs.rm(`${dbPath}-shm`, { force: true }),
-	]);
-}
-
-beforeEach(async () => {
-	closeDb();
-	tempDir = TempDir.createSync("@pi-stats-priority-");
-	const homeDir = tempDir.join("home");
-	await fs.mkdir(homeDir, { recursive: true });
-	process.env.HOME = homeDir;
-	delete process.env.XDG_DATA_HOME;
-	delete process.env.XDG_STATE_HOME;
-	delete process.env.XDG_CACHE_HOME;
-	setAgentDir(path.join(homeDir, ".pi", "agent"));
-	await resetStatsDb();
-});
-
-afterEach(async () => {
-	closeDb();
-	await resetStatsDb();
-	if (originalHome === undefined) delete process.env.HOME;
-	else process.env.HOME = originalHome;
-	for (const [key, value] of Object.entries(originalXdg)) {
-		if (value === undefined) delete process.env[key];
-		else process.env[key] = value;
-	}
-	setAgentDir(originalAgentDir);
-	tempDir?.removeSync();
-	tempDir = null;
-});
+installStatsTestIsolation("@pi-stats-priority-");
 
 interface SessionLines {
 	lines: Array<Record<string, unknown>>;

@@ -1,25 +1,13 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { closeDb, initDb, insertMessageStats } from "@oh-my-pi/omp-stats/db";
+import { initDb, insertMessageStats } from "@oh-my-pi/omp-stats/db";
 import { dedupeProjects, getGainDashboardStats, normalizeProjectPath } from "@oh-my-pi/omp-stats/gain-aggregator";
 import type { MessageStats } from "@oh-my-pi/omp-stats/types";
-import { getAgentDir, getStatsDbPath, setAgentDir, TempDir } from "@oh-my-pi/pi-utils";
+import { getStatsDbPath } from "@oh-my-pi/pi-utils";
+import { installStatsTestIsolation } from "./helpers/temp-agent";
 
-const originalAgentDir = getAgentDir();
-let tempDir: TempDir | null = null;
-
-beforeEach(() => {
-	tempDir = TempDir.createSync("@pi-stats-gain-");
-	setAgentDir(tempDir.join("config", "agent"));
-});
-
-afterEach(() => {
-	closeDb();
-	setAgentDir(originalAgentDir);
-	tempDir?.removeSync();
-	tempDir = null;
-});
+installStatsTestIsolation("@pi-stats-gain-");
 
 function makeMessage(sessionFile: string, folder: string, entryId: string, timestamp: number): MessageStats {
 	return {
