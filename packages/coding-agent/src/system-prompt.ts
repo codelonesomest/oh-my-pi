@@ -131,23 +131,47 @@ async function runGpuProbe(cmd: string[]): Promise<string | null> {
 		const stdoutReader = proc.stdout.getReader();
 		let stdout = "";
 		const decoder = new TextDecoder();
+		const firstChunk = Promise.withResolvers<void>();
+		let firstChunkSettled = false;
 		const stdoutDone = (async () => {
 			while (true) {
 				const chunk = await stdoutReader.read();
 				if (chunk.done) break;
 				stdout += decoder.decode(chunk.value, { stream: true });
+				if (!firstChunkSettled) {
+					firstChunkSettled = true;
+					firstChunk.resolve();
+				}
 			}
 			stdout += decoder.decode();
-		})();
+			return "ok" as const;
+		})().catch(() => "err" as const);
 		const exitCode = await proc.exited;
 		// Even on exit 0, a probe wrapper can leave a descendant holding stdout open.
-		// Bound the EOF wait so getCachedGpu cannot outlive the probe in either path;
-		// keep whatever bytes the reader already captured before cancelling.
-		const drained = await Promise.race([
-			stdoutDone.then(() => "ok" as const).catch(() => "err" as const),
-			Bun.sleep(GPU_PROBE_STDOUT_DRAIN_MS).then(() => "timeout" as const),
-		]);
-		if (drained !== "ok") {
+		// Bound the EOF wait so getCachedGpu cannot outlive the probe in either path.
+		// After a successful exit, first wait until EOF, the first captured bytes, or
+		// the drain timeout fires before deciding whether to cancel an inherited pipe.
+		let drained: "ok" | "err" | "timeout";
+		if (exitCode === 0) {
+			const ready = await Promise.race([
+				stdoutDone,
+				firstChunk.promise.then(() => "chunk" as const),
+				Bun.sleep(GPU_PROBE_STDOUT_DRAIN_MS).then(() => "timeout" as const),
+			]);
+			drained =
+				ready === "chunk"
+					? await Promise.race([
+							stdoutDone,
+							Bun.sleep(GPU_PROBE_STDOUT_DRAIN_MS).then(() => "timeout" as const),
+						])
+					: ready;
+		} else {
+			drained = await Promise.race([
+				stdoutDone,
+				Bun.sleep(GPU_PROBE_STDOUT_DRAIN_MS).then(() => "timeout" as const),
+			]);
+		}
+		if (drained === "timeout") {
 			await stdoutReader.cancel().catch(() => undefined);
 			await stdoutDone.catch(() => undefined);
 		}
