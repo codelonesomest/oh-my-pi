@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [16.2.7] - 2026-06-30
+
+### Added
+
+- Added the `silver16-bw` shape backed by an embedded Silver TrueType font to support CJK and other non-Latin text.
+- Added `resolveShapeForText` to support font-aware shape resolution.
+
+### Changed
+
+- Improved non-ASCII text normalization by folding semantic emojis to ASCII labels (e.g., `[OK]`, `[WARN]`), dropping decorative emojis, and folding box-drawing symbols to ASCII skeletons.
+- Enhanced missing glyph rendering to use the embedded Silver TrueType fallback per-character, including support for East Asian wide characters across two grid cells.
+- Updated text wrapping, pagination, and provider shape geometries to support wide character footprints and updated X.org 8x13 font metrics.
+
 ## [16.1.23] - 2026-06-26
 
 ### Added
