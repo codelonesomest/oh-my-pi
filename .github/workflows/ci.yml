@@ -240,14 +240,14 @@ jobs:
    native_cross_platform_kata:
       name: "Native: ${{ matrix.platform }} ${{ matrix.arch }}"
       needs: [release_metadata, native_artifact_lookup]
-      if: ${{ github.repository == 'can1357/oh-my-pi' && (needs.release_metadata.outputs.is-release == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.native_artifact_lookup.outputs.cross-platform-run-id == '')) }}
+      if: ${{ needs.release_metadata.outputs.is-release == 'true' || (github.repository == 'can1357/oh-my-pi' && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.native_artifact_lookup.outputs.cross-platform-run-id == '') }}
       strategy:
          fail-fast: false
          matrix:
             include:
-               - { os: omp-kata, platform: linux, arch: arm64, target: aarch64-unknown-linux-gnu }
-               - { os: omp-kata, platform: win32, arch: x64, target: x86_64-pc-windows-msvc, variant: baseline }
-      runs-on: ${{ matrix.os }}
+               - { platform: linux, arch: arm64, target: aarch64-unknown-linux-gnu }
+               - { platform: win32, arch: x64, target: x86_64-pc-windows-msvc, variant: baseline }
+      runs-on: ${{ github.repository == 'can1357/oh-my-pi' && 'omp-kata' || (matrix.platform == 'linux' && 'ubuntu-24.04-arm' || 'ubuntu-22.04') }}
       steps:
          - uses: actions/checkout@v7
          - uses: ./.github/actions/build-native
