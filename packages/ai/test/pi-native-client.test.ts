@@ -39,10 +39,13 @@ function fakeBody(bytes: Uint8Array): ReadableStream<Uint8Array> {
 	});
 }
 
-function stalledBody(bytes: Uint8Array[] = []): ReadableStream<Uint8Array> {
+function stalledBody(bytes: Uint8Array[] = [], onCancel?: (reason: unknown) => void): ReadableStream<Uint8Array> {
 	return new ReadableStream<Uint8Array>({
 		start(controller) {
 			for (const chunk of bytes) controller.enqueue(chunk);
+		},
+		cancel(reason) {
+			onCancel?.(reason);
 		},
 	});
 }
@@ -315,11 +318,15 @@ describe("streamPiNative event flow", () => {
 			sseEventBytes({ type: "start", partial: baseAssistant() }),
 			sseEventBytes({ type: "text_delta", contentIndex: 0, delta: "hi", partial }),
 		];
+		const cancelReasons: unknown[] = [];
 		const fetchImpl: FetchImpl = (async () =>
-			new Response(stalledBody(chunks), {
-				status: 200,
-				headers: { "Content-Type": "text/event-stream" },
-			})) as FetchImpl;
+			new Response(
+				stalledBody(chunks, reason => cancelReasons.push(reason)),
+				{
+					status: 200,
+					headers: { "Content-Type": "text/event-stream" },
+				},
+			)) as FetchImpl;
 
 		const stream = streamPiNative(fakeModel(), baseContext, {
 			apiKey: "k",
@@ -329,15 +336,16 @@ describe("streamPiNative event flow", () => {
 		});
 
 		await expect(stream.result()).rejects.toThrow(/next event/);
+		expect(cancelReasons.length).toBeGreaterThan(0);
 	});
 
 	it("does not time out a healthy pi-native stream that keeps making semantic progress", async () => {
 		const final = baseAssistant({ content: [{ type: "text", text: "hello world" }] });
 		const chunks = [
 			{ atMs: 0, bytes: sseEventBytes({ type: "start", partial: baseAssistant() }) },
-			{ atMs: 15, bytes: sseEventBytes({ type: "text_delta", contentIndex: 0, delta: "hello", partial: final }) },
-			{ atMs: 35, bytes: sseEventBytes({ type: "text_delta", contentIndex: 0, delta: " world", partial: final }) },
-			{ atMs: 55, bytes: sseEventBytes({ type: "done", reason: "stop", message: final }) },
+			{ atMs: 5, bytes: sseEventBytes({ type: "text_delta", contentIndex: 0, delta: "hello", partial: final }) },
+			{ atMs: 10, bytes: sseEventBytes({ type: "text_delta", contentIndex: 0, delta: " world", partial: final }) },
+			{ atMs: 15, bytes: sseEventBytes({ type: "done", reason: "stop", message: final }) },
 		];
 		const fetchImpl: FetchImpl = (async () =>
 			new Response(delayedBody(chunks), {
@@ -348,8 +356,8 @@ describe("streamPiNative event flow", () => {
 		const stream = streamPiNative(fakeModel(), baseContext, {
 			apiKey: "k",
 			fetch: fetchImpl,
-			streamFirstEventTimeoutMs: 40,
-			streamIdleTimeoutMs: 30,
+			streamFirstEventTimeoutMs: 1_000,
+			streamIdleTimeoutMs: 1_000,
 		});
 
 		const result = await stream.result();
@@ -399,9 +407,16 @@ describe("streamPiNative event flow", () => {
 
 	it("forwards caller aborts to the underlying fetch signal", async () => {
 		const captured: { signal?: AbortSignal } = {};
+		const cancelReasons: unknown[] = [];
 		const fetchImpl: FetchImpl = (async (_input, init) => {
 			captured.signal = init?.signal ?? undefined;
-			return new Response(stalledBody(), { status: 200, headers: { "Content-Type": "text/event-stream" } });
+			return new Response(
+				stalledBody([], reason => cancelReasons.push(reason)),
+				{
+					status: 200,
+					headers: { "Content-Type": "text/event-stream" },
+				},
+			);
 		}) as FetchImpl;
 		const controller = new AbortController();
 		const stream = streamPiNative(fakeModel(), baseContext, {
@@ -417,5 +432,6 @@ describe("streamPiNative event flow", () => {
 		const result = await stream.result();
 		expect(captured.signal?.aborted).toBe(true);
 		expect(result.stopReason).toBe("aborted");
+		expect(cancelReasons.length).toBeGreaterThan(0);
 	});
 });

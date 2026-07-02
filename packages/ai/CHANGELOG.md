@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed pi-native stream cancellation so caller aborts wake stalled SSE iteration immediately and idle timeouts cancel the underlying response body instead of leaving the read loop suspended.
+
 ## [16.2.13] - 2026-07-01
 
 ### Fixed

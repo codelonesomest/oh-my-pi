@@ -207,6 +207,7 @@ export function streamPiNative<TApi extends Api>(
 				onFirstItemTimeout: () =>
 					abortTracker.abortLocally(new AIError.StreamTimeoutError(PI_NATIVE_STREAM_FIRST_EVENT_TIMEOUT_ERROR)),
 				isProgressItem: isPiNativeProgressEvent,
+				abortSignal: abortTracker.requestSignal,
 			});
 			let sawTerminal = false;
 			for await (const event of watchedSource) {
@@ -236,7 +237,14 @@ export function streamPiNative<TApi extends Api>(
 			}
 			stream.end();
 		} catch (err) {
-			stream.fail(err);
+			if (abortTracker.wasCallerAbort()) {
+				const partial = makeSyntheticAssistant(model as Model<Api>);
+				partial.stopReason = "aborted";
+				partial.errorMessage = "stream closed without terminal event";
+				stream.push({ type: "error", reason: "aborted", error: partial });
+			} else {
+				stream.fail(err);
+			}
 		} finally {
 			if (callerSignal) callerSignal.removeEventListener("abort", onAbort);
 		}
