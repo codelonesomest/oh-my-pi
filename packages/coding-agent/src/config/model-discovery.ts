@@ -19,7 +19,7 @@ import {
 	OPENAI_COMPAT_DISCOVERY_DEFAULT_CONTEXT_WINDOW,
 	OPENAI_COMPAT_DISCOVERY_DEFAULT_MAX_TOKENS,
 } from "@oh-my-pi/pi-catalog/provider-models/openai-compat";
-import type { ModelSpec } from "@oh-my-pi/pi-catalog/types";
+import type { ModelSpec, OpenAICompat } from "@oh-my-pi/pi-catalog/types";
 import { isRecord } from "@oh-my-pi/pi-utils";
 import type { ProviderDiscovery } from "./models-config-schema";
 
@@ -34,6 +34,31 @@ import type { ProviderDiscovery } from "./models-config-schema";
 // "socket connection was closed unexpectedly").
 export const DISCOVERY_DEFAULT_CONTEXT_WINDOW = OPENAI_COMPAT_DISCOVERY_DEFAULT_CONTEXT_WINDOW;
 export const DISCOVERY_DEFAULT_MAX_TOKENS = OPENAI_COMPAT_DISCOVERY_DEFAULT_MAX_TOKENS;
+
+/**
+ * Run `fn` with an abort signal that fires after `timeoutMs`, clearing the
+ * backing timer the instant the operation settles.
+ *
+ * Unlike the built-in abort-signal timeout API, the timer never outlives the
+ * request: on the success path it is cancelled before `fn` resolves, so the
+ * signal is never aborted and no pending callback lingers on the heap. A leaked
+ * abort-signal timeout (e.g. discovery against a mocked fetch that resolves
+ * instantly) fires seconds later and sets its abort `reason` — which crashed
+ * Bun's concurrent GC while it marked the signal's wrapped reason during an
+ * unrelated allocation (`JSAbortSignal::visitAdditionalChildren`).
+ */
+async function withTimeoutSignal<T>(timeoutMs: number, fn: (signal: AbortSignal) => Promise<T>): Promise<T> {
+	const controller = new AbortController();
+	const timer = setTimeout(
+		() => controller.abort(new DOMException("The operation timed out.", "TimeoutError")),
+		timeoutMs,
+	);
+	try {
+		return await fn(controller.signal);
+	} finally {
+		clearTimeout(timer);
+	}
+}
 
 const DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434";
 const OLLAMA_HOST_DEFAULT_PORT = "11434";
@@ -288,16 +313,18 @@ async function discoverOllamaModelMetadata(
 ): Promise<OllamaDiscoveredModelMetadata | null> {
 	const showUrl = `${endpoint}/api/show`;
 	try {
-		const response = await ctx.fetch(showUrl, {
-			method: "POST",
-			headers: { ...(headers ?? {}), "Content-Type": "application/json" },
-			body: JSON.stringify({ model: modelId }),
-			signal: AbortSignal.timeout(150),
+		const payload = await withTimeoutSignal(150, async signal => {
+			const response = await ctx.fetch(showUrl, {
+				method: "POST",
+				headers: { ...(headers ?? {}), "Content-Type": "application/json" },
+				body: JSON.stringify({ model: modelId }),
+				signal,
+			});
+			if (!response.ok) {
+				return null;
+			}
+			return (await response.json()) as unknown;
 		});
-		if (!response.ok) {
-			return null;
-		}
-		const payload = (await response.json()) as unknown;
 		if (!isRecord(payload)) {
 			return null;
 		}
@@ -339,14 +366,16 @@ export async function discoverOllamaModels(
 	const endpoint = normalizeOllamaBaseUrl(providerConfig.baseUrl);
 	const tagsUrl = `${endpoint}/api/tags`;
 	const headers = { ...(providerConfig.headers ?? {}) };
-	const response = await ctx.fetch(tagsUrl, {
-		headers,
-		signal: AbortSignal.timeout(250),
+	const payload = await withTimeoutSignal(250, async signal => {
+		const response = await ctx.fetch(tagsUrl, {
+			headers,
+			signal,
+		});
+		if (!response.ok) {
+			throw new Error(`HTTP ${response.status} from ${tagsUrl}`);
+		}
+		return (await response.json()) as { models?: Array<{ name?: string; model?: string }> };
 	});
-	if (!response.ok) {
-		throw new Error(`HTTP ${response.status} from ${tagsUrl}`);
-	}
-	const payload = (await response.json()) as { models?: Array<{ name?: string; model?: string }> };
 	const entries = (payload.models ?? []).flatMap(item => {
 		const id = item.model || item.name;
 		return id ? [{ id, name: item.name || id }] : [];
@@ -384,14 +413,16 @@ async function discoverLlamaCppServerMetadata(
 ): Promise<LlamaCppDiscoveredServerMetadata | null> {
 	const propsUrl = `${toLlamaCppNativeBaseUrl(baseUrl)}/props`;
 	try {
-		const response = await ctx.fetch(propsUrl, {
-			headers,
-			signal: AbortSignal.timeout(150),
+		const payload = await withTimeoutSignal(150, async signal => {
+			const response = await ctx.fetch(propsUrl, {
+				headers,
+				signal,
+			});
+			if (!response.ok) {
+				return null;
+			}
+			return (await response.json()) as unknown;
 		});
-		if (!response.ok) {
-			return null;
-		}
-		const payload = (await response.json()) as unknown;
 		if (!isRecord(payload)) {
 			return null;
 		}
@@ -415,24 +446,26 @@ export async function discoverLlamaCppModels(
 	const baseHeaders: Record<string, string> = { ...(providerConfig.headers ?? {}) };
 	let headers = baseHeaders;
 	const attempt = async (h: Record<string, string>) => {
-		const [response, metadata] = await Promise.all([
-			ctx.fetch(modelsUrl, {
-				headers: h,
-				signal: AbortSignal.timeout(250),
+		const [payload, metadata] = await Promise.all([
+			withTimeoutSignal(250, async signal => {
+				const response = await ctx.fetch(modelsUrl, {
+					headers: h,
+					signal,
+				});
+				if (!response.ok) {
+					throw new Error(`HTTP ${response.status} from ${modelsUrl}`);
+				}
+				headers = h;
+				return (await response.json()) as unknown;
 			}),
 			discoverLlamaCppServerMetadata(ctx, baseUrl, h),
 		]);
-		if (!response.ok) {
-			throw new Error(`HTTP ${response.status} from ${modelsUrl}`);
-		}
-		headers = h;
-		return [response, metadata] as const;
+		return [payload, metadata] as const;
 	};
 	const apiKey = await ctx.getBearerApiKeyResolver(providerConfig.provider);
-	const [response, serverMetadata] = apiKey
+	const [payload, serverMetadata] = apiKey
 		? await withAuth(apiKey, key => attempt({ ...baseHeaders, Authorization: `Bearer ${key}` }))
 		: await attempt(baseHeaders);
-	const payload = (await response.json()) as unknown;
 	const models = parseLlamaCppModelList(payload);
 	const discovered: Model<Api>[] = [];
 	for (const item of models) {
@@ -476,17 +509,22 @@ export async function discoverLlamaCppModelRuntimeMetadata(
 	const modelsUrl = `${baseUrl}/models`;
 	const baseHeaders: Record<string, string> = { ...(model.headers ?? {}) };
 	const attempt = async (headers: Record<string, string>) => {
-		const [response, serverMetadata] = await Promise.all([
-			ctx.fetch(modelsUrl, {
-				headers,
-				signal: AbortSignal.timeout(250),
+		const [entries, serverMetadata] = await Promise.all([
+			withTimeoutSignal(250, async signal => {
+				const response = await ctx.fetch(modelsUrl, {
+					headers,
+					signal,
+				});
+				if (!response.ok) {
+					return undefined;
+				}
+				return parseLlamaCppModelList(await response.json());
 			}),
 			discoverLlamaCppServerMetadata(ctx, baseUrl, headers),
 		]);
-		if (!response.ok) {
+		if (!entries) {
 			return undefined;
 		}
-		const entries = parseLlamaCppModelList(await response.json());
 		const entry = entries.find(entry => entry.id === model.id);
 		if (!entry) {
 			return undefined;
@@ -524,55 +562,83 @@ export async function discoverOpenAIModelsList(
 			providerConfig.discovery.type === "lm-studio"
 				? fetchLmStudioNativeModelMetadata(baseUrl, ctx.fetch, { headers: h })
 				: Promise.resolve(null);
-		const [res, nativeMetadata] = await Promise.all([
-			ctx.fetch(modelsUrl, {
-				headers: h,
-				signal: AbortSignal.timeout(10_000),
+		const [payload, nativeMetadata] = await Promise.all([
+			withTimeoutSignal(10_000, async signal => {
+				const res = await ctx.fetch(modelsUrl, {
+					headers: h,
+					signal,
+				});
+				if (!res.ok) {
+					throw new Error(`HTTP ${res.status} from ${modelsUrl}`);
+				}
+				headers = h;
+				return (await res.json()) as {
+					data?: Array<{ id?: string; max_model_len?: unknown; context_length?: unknown }>;
+				};
 			}),
 			nativeMetadataPromise,
 		]);
-		if (!res.ok) {
-			throw new Error(`HTTP ${res.status} from ${modelsUrl}`);
-		}
-		headers = h;
-		return [res, nativeMetadata] as const;
+		return [payload, nativeMetadata] as const;
 	};
 	const apiKey = await ctx.getBearerApiKeyResolver(providerConfig.provider);
-	const [response, nativeMetadata] = apiKey
+	const [payload, nativeMetadata] = apiKey
 		? await withAuth(apiKey, key => attempt({ ...baseHeaders, Authorization: `Bearer ${key}` }))
 		: await attempt(baseHeaders);
-	const payload = (await response.json()) as {
-		data?: Array<{ id?: string; max_model_len?: unknown; context_length?: unknown }>;
-	};
 	const models = payload.data ?? [];
+	const references = getBundledModelReferenceIndex();
 	const discovered: Model<Api>[] = [];
 	for (const item of models) {
 		const id = item.id;
 		if (!id) continue;
 		const nativeMetadataForModel = nativeMetadata?.get(id);
+		// Thin OpenAI-compatible proxies frequently omit `context_length`/
+		// `max_model_len` on `/v1/models`, leaving discovered models pinned at
+		// the 128K default even when the underlying model is e.g. a proxied
+		// Claude with a 1M window. Resolve the id against the bundled catalog
+		// (same pattern as `discoverProxyModels` and `discoverLiteLLMModels`) so
+		// intrinsic metadata — context/output limits, display name, modality,
+		// reasoning support — flows through when the provider is silent. Local
+		// runtime state and provider-reported values still win; proxy-specific
+		// headers/baseUrl/cost stay local.
+		const reference = resolveModelReference(id, references) as ModelSpec<Api> | undefined;
+		const referenceCompat = reference?.compat as OpenAICompat | undefined;
 		const contextWindow =
 			toPositiveNumberOrUndefined(item.max_model_len) ??
 			toPositiveNumberOrUndefined(item.context_length) ??
 			nativeMetadataForModel?.contextWindow ??
+			reference?.contextWindow ??
 			DISCOVERY_DEFAULT_CONTEXT_WINDOW;
 		discovered.push(
 			buildModel({
 				id,
-				name: id,
+				name: reference?.name ?? id,
 				api: providerConfig.api,
 				provider: providerConfig.provider,
 				baseUrl,
-				reasoning: false,
-				input: nativeMetadataForModel?.input ?? ["text"],
+				reasoning: reference?.reasoning ?? false,
+				thinking: reference?.thinking,
+				input: nativeMetadataForModel?.input ?? reference?.input ?? ["text"],
 				...(providerConfig.discovery.type === "lm-studio" ? { imageInputDecoder: "stb" as const } : {}),
+				// Proxy/gateway pricing is provider-specific and rarely matches
+				// upstream bundled catalogs, so keep costs local-unknown even
+				// when we successfully recover the upstream model identity.
 				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 				contextWindow,
-				maxTokens: Math.min(contextWindow, discoveryDefaultMaxTokens(providerConfig.api)),
+				// Cap the reference's output limit at the discovered context
+				// window so an ID collision with a larger bundled model can
+				// never request more tokens than the local runtime advertises.
+				maxTokens: Math.min(reference?.maxTokens ?? discoveryDefaultMaxTokens(providerConfig.api), contextWindow),
 				headers,
 				compat: {
 					supportsStore: false,
 					supportsDeveloperRole: false,
-					supportsReasoningEffort: false,
+					supportsReasoningEffort: referenceCompat?.supportsReasoningEffort ?? false,
+					...(referenceCompat?.reasoningEffortMap
+						? { reasoningEffortMap: referenceCompat.reasoningEffortMap }
+						: {}),
+					...(referenceCompat?.omitReasoningEffort !== undefined
+						? { omitReasoningEffort: referenceCompat.omitReasoningEffort }
+						: {}),
 				},
 			} as ModelSpec<Api>),
 		);
@@ -600,15 +666,17 @@ export async function discoverLiteLLMModels(
 			}
 			return response;
 		};
-		const models = await fetchLiteLLMRichModels({
-			api: providerConfig.api,
-			provider: providerConfig.provider,
-			baseUrl,
-			headers: h,
-			fetch: authAwareFetch,
-			referenceResolver: resolveReference,
-			signal: AbortSignal.timeout(10_000),
-		});
+		const models = await withTimeoutSignal(10_000, signal =>
+			fetchLiteLLMRichModels({
+				api: providerConfig.api,
+				provider: providerConfig.provider,
+				baseUrl,
+				headers: h,
+				fetch: authAwareFetch,
+				referenceResolver: resolveReference,
+				signal,
+			}),
+		);
 		if (authError && models === null) {
 			throw authError;
 		}
@@ -657,24 +725,24 @@ export async function discoverProxyModels(
 
 	const baseHeaders: Record<string, string> = { ...(providerConfig.headers ?? {}) };
 	let headers = baseHeaders;
-	const attempt = async (h: Record<string, string>) => {
-		const res = await ctx.fetch(modelsUrl, {
-			headers: h,
-			signal: AbortSignal.timeout(10_000),
+	const attempt = async (h: Record<string, string>) =>
+		withTimeoutSignal(10_000, async signal => {
+			const res = await ctx.fetch(modelsUrl, {
+				headers: h,
+				signal,
+			});
+			if (!res.ok) {
+				throw new Error(`HTTP ${res.status} from ${modelsUrl}`);
+			}
+			headers = h;
+			return (await res.json()) as {
+				data?: Array<{ id?: string; name?: string; supported_endpoint_types?: string[]; context_length?: number }>;
+			};
 		});
-		if (!res.ok) {
-			throw new Error(`HTTP ${res.status} from ${modelsUrl}`);
-		}
-		headers = h;
-		return res;
-	};
 	const apiKey = await ctx.getBearerApiKeyResolver(providerConfig.provider);
-	const response = apiKey
+	const payload = apiKey
 		? await withAuth(apiKey, key => attempt({ ...baseHeaders, Authorization: `Bearer ${key}` }))
 		: await attempt(baseHeaders);
-	const payload = (await response.json()) as {
-		data?: Array<{ id?: string; name?: string; supported_endpoint_types?: string[]; context_length?: number }>;
-	};
 	const items = payload.data ?? [];
 	const discovered: Model<Api>[] = [];
 	for (const item of items) {

@@ -115,6 +115,7 @@ import {
 import * as AIError from "@oh-my-pi/pi-ai/error";
 import { toolWireSchema } from "@oh-my-pi/pi-ai/utils/schema";
 import { GeminiHeaderRunDetector, isGeminiThinkingModel } from "@oh-my-pi/pi-ai/utils/thinking-loop";
+import { type RepeatedToolCallDetection, ToolCallLoopGuard } from "@oh-my-pi/pi-ai/utils/tool-call-loop-guard";
 import { isFireworksFastModelId, toFireworksBaseModelId } from "@oh-my-pi/pi-catalog/fireworks-model-id";
 import { getSupportedEfforts } from "@oh-my-pi/pi-catalog/model-thinking";
 import { modelsAreEqual } from "@oh-my-pi/pi-catalog/models";
@@ -250,6 +251,8 @@ import planModeToolDecisionReminderPrompt from "../prompts/system/plan-mode-tool
 	type: "text",
 };
 import sideChannelNoToolsReminder from "../prompts/system/side-channel-no-tools.md" with { type: "text" };
+import thinkingLoopRedirectTemplate from "../prompts/system/thinking-loop-redirect.md" with { type: "text" };
+import toolCallLoopRedirectTemplate from "../prompts/system/tool-call-loop-redirect.md" with { type: "text" };
 import ttsrInterruptTemplate from "../prompts/system/ttsr-interrupt.md" with { type: "text" };
 import ttsrToolReminderTemplate from "../prompts/system/ttsr-tool-reminder.md" with { type: "text" };
 import unexpectedStopRetryTemplate from "../prompts/system/unexpected-stop-retry.md" with { type: "text" };
@@ -284,6 +287,7 @@ import {
 	selectDiscoverableToolNamesByServer,
 } from "../tool-discovery/tool-index";
 import { assertEditableFile } from "../tools/auto-generated-guard";
+import { releaseTabsForOwner } from "../tools/browser/tab-supervisor";
 import { normalizeToolNames } from "../tools/builtin-names";
 import type { CheckpointState } from "../tools/checkpoint";
 import { outputMeta, wrapToolWithMetaNotice } from "../tools/output-meta";
@@ -346,6 +350,10 @@ const SESSION_STOP_CONTINUATION_CAP = 8;
 const GEMINI_HEADER_INTERRUPT_REASON = "Interrupted: emit a tool call instead of more planning";
 /** `customType` for the hidden tool-call reminder injected after the interrupt. */
 const GEMINI_TOOL_REMINDER_TYPE = "gemini-tool-call-reminder";
+/** `customType` for the hidden redirect notice injected into a turn retried after a
+ *  thinking/response loop. Steers the model off the repeated content; never displayed. */
+const THINKING_LOOP_REDIRECT_TYPE = "thinking-loop-redirect";
+const TOOL_CALL_LOOP_REDIRECT_TYPE = "tool-call-loop-redirect";
 
 // A side-channel assistant response is signed for the hidden prompt/history that
 // produced it. If we persist that response under a different user turn, native
@@ -1550,6 +1558,8 @@ export class AgentSession {
 	 *  `#geminiHeaderGuardActive`); undefined for non-Gemini models or when the
 	 *  guard is off. Fed thinking deltas in the assistant-message interceptor. */
 	#geminiHeaderDetector: GeminiHeaderRunDetector | undefined;
+	#toolCallLoopGuard: ToolCallLoopGuard | undefined;
+	#toolCallLoopGuardSettingsKey: string | undefined;
 	#promptInFlightCount = 0;
 	#abortInProgress = false;
 	// Wire-level agent_end emission deferred until #promptInFlightCount drops to 0.
@@ -1844,6 +1854,13 @@ export class AgentSession {
 				this.#pendingRewindReport = undefined;
 				await this.#applyRewind(rewindReport, messages);
 			}
+			if (context?.message.role === "assistant") {
+				const detection = this.#activeToolCallLoopGuard()?.recordTurn({
+					message: context.message,
+					toolResults: context.toolResults,
+				});
+				if (detection) this.#maybeInjectToolCallLoopRedirect(messages, detection);
+			}
 			this.#advisorPrimaryTurnsCompleted++;
 			if (this.#advisors.length > 0) {
 				for (const a of this.#advisors) {
@@ -2091,11 +2108,7 @@ export class AgentSession {
 					continue;
 				}
 			} else {
-				const sel = resolveAdvisorRoleSelection(
-					this.settings,
-					this.#modelRegistry.getAvailable(),
-					this.#modelRegistry,
-				);
+				const sel = resolveAdvisorRoleSelection(this.settings, this.#modelRegistry.getAvailable());
 				if (!sel) {
 					logger.debug("advisor enabled but no model assigned to the 'advisor' role; advisor inactive", {
 						advisor: config.name,
@@ -2882,10 +2895,10 @@ export class AgentSession {
 	 * the mid-run-compaction planner can ask "is this turn message already on
 	 * the branch?" in O(1) instead of re-walking the branch per check.
 	 *
-	 * The Map's value is the list of branch messages that share a key — almost
-	 * always one. We only need the LIST when content equality matters (rare
-	 * collision tiebreaker via {@link sameMessageContent}); the empty/single-
-	 * entry common case lets the caller's lookup short-circuit at presence.
+	 * The mid-run ordering check uses key identity alone: same-key content
+	 * variants are one logical message at this boundary, because otherwise a
+	 * display-side rewrite can make the assistant look missing after its tool
+	 * results have already persisted.
 	 *
 	 * Pre-#3629 the equivalent was `sessionManager.getBranch()` called twice
 	 * per turn message, each call rebuilding the path via O(n²) `unshift` and
@@ -2893,17 +2906,14 @@ export class AgentSession {
 	 * per `onTurnEnd` on a long session and the load-bearing source of the
 	 * `ui.loop-blocked` warnings in the bug report.
 	 */
-	#indexPersistedMessagesByKey(): Map<string, AgentMessage[]> {
-		const index = new Map<string, AgentMessage[]>();
+	#indexPersistedMessageKeys(): Set<string> {
+		const keys = new Set<string>();
 		for (const entry of this.sessionManager.getBranch()) {
 			if (entry.type !== "message") continue;
 			const key = sessionMessagePersistenceKey(entry.message);
-			if (key === undefined) continue;
-			const existing = index.get(key);
-			if (existing) existing.push(entry.message);
-			else index.set(key, [entry.message]);
+			if (key !== undefined) keys.add(key);
 		}
-		return index;
+		return keys;
 	}
 
 	/**
@@ -3003,17 +3013,17 @@ export class AgentSession {
 		// JSON-compared every entry per turn message, which on long sessions
 		// turned each `onTurnEnd` into a seconds-long sync block (the
 		// `ui.loop-blocked` warnings tagged `subagent:*` in the bug report).
-		const branchIndex = this.#indexPersistedMessagesByKey();
+		const branchKeys = this.#indexPersistedMessageKeys();
 		const turnKeys = turnMessages.map(sessionMessagePersistenceKey);
 		const persistedKeys = new Set<string>();
 		for (let index = 0; index < turnMessages.length; index++) {
 			const key = turnKeys[index];
 			if (key === undefined) continue;
-			const candidates = branchIndex.get(key);
-			if (!candidates) continue;
-			// Key match only counts when content also matches — two distinct
-			// messages that collided on the cheap key must STILL be persisted.
-			if (candidates.some(persisted => sameMessageContent(persisted, turnMessages[index]))) {
+			// Mid-run ordering is keyed by logical identity. A persisted display
+			// variant (for example, redacted/deobfuscated content) must still count;
+			// otherwise the assistant can look missing while later tool results are
+			// present, producing a false out-of-order skip.
+			if (branchKeys.has(key)) {
 				persistedKeys.add(key);
 			}
 		}
@@ -4298,6 +4308,58 @@ export class AgentSession {
 		this.#streamingEditFileCache.clear();
 	}
 
+	#activeToolCallLoopGuard(): ToolCallLoopGuard | undefined {
+		if (this.settings.get("model.toolCallLoopGuard.enabled") !== true) {
+			this.#toolCallLoopGuard = undefined;
+			this.#toolCallLoopGuardSettingsKey = undefined;
+			return undefined;
+		}
+
+		const threshold = this.settings.get("model.toolCallLoopGuard.threshold");
+		const exemptTools = this.settings
+			.get("model.toolCallLoopGuard.exemptTools")
+			.filter((tool): tool is string => typeof tool === "string" && tool.length > 0);
+		const settingsKey = `${threshold}:${JSON.stringify(exemptTools)}`;
+		if (!this.#toolCallLoopGuard || this.#toolCallLoopGuardSettingsKey !== settingsKey) {
+			this.#toolCallLoopGuard = new ToolCallLoopGuard({ threshold, exemptTools });
+			this.#toolCallLoopGuardSettingsKey = settingsKey;
+		}
+		return this.#toolCallLoopGuard;
+	}
+
+	#maybeInjectToolCallLoopRedirect(messages: AgentMessage[], detection: RepeatedToolCallDetection): void {
+		const content = prompt.render(toolCallLoopRedirectTemplate, {
+			tool_name: detection.toolName,
+			count: detection.count,
+			arguments_summary: detection.argumentsSummary,
+			result_summary: detection.resultSummary || "(no text result)",
+		});
+		const details = {
+			toolName: detection.toolName,
+			count: detection.count,
+			argumentsSummary: detection.argumentsSummary,
+			resultSummary: detection.resultSummary,
+		};
+		logger.warn("cross-turn tool-call loop detected", {
+			toolName: detection.toolName,
+			count: detection.count,
+		});
+		const redirectMessage: CustomMessage = {
+			role: "custom",
+			customType: TOOL_CALL_LOOP_REDIRECT_TYPE,
+			content,
+			display: false,
+			details,
+			attribution: "agent",
+			timestamp: Date.now(),
+		};
+		messages.push(redirectMessage);
+		if (this.agent.state.messages !== messages) {
+			this.agent.appendMessage(redirectMessage);
+		}
+		this.sessionManager.appendCustomMessageEntry(TOOL_CALL_LOOP_REDIRECT_TYPE, content, false, details, "agent");
+	}
+
 	/**
 	 * Whether the Gemini header-runaway guard applies to the current model: the loop
 	 * guard is on (settings + `PI_NO_THINKING_LOOP_GUARD`), the tool-call reminder is
@@ -5092,6 +5154,28 @@ export class AgentSession {
 		await disposeKernelSessionsByOwner(this.#evalKernelOwnerId);
 		await disposeRubyKernelSessionsByOwner(this.#evalKernelOwnerId);
 		await disposeJuliaKernelSessionsByOwner(this.#evalKernelOwnerId);
+		// Release headless / spawned Chromium and worker tabs this session
+		// opened via the browser tool. The tool's `tabs`/`browsers` maps are
+		// module-global — subagents and future sessions share them — so we
+		// walk by `ownerSessionId` (assigned at `acquireTab` creation, never on
+		// reuse) and touch only what THIS session created. Bounded so a broken
+		// CDP close cannot stall `/exit`; mirrors the async-job/MCP pattern.
+		// (Issue #3963.)
+		const browserOwnerId = this.sessionManager.getSessionId();
+		if (browserOwnerId) {
+			try {
+				const released = await withTimeout(
+					releaseTabsForOwner(browserOwnerId, { kill: true }),
+					3_000,
+					"Timed out releasing owned browser tabs during dispose",
+				);
+				if (released > 0) {
+					logger.debug("Released owned browser tabs during dispose", { ownerId: browserOwnerId, released });
+				}
+			} catch (error) {
+				logger.warn("Failed to release owned browser tabs during dispose", { error: String(error) });
+			}
+		}
 		await shutdownTinyTitleClient();
 		this.#releasePowerAssertion();
 		// Clean up an empty session created by this session's /move so it doesn't accumulate.
@@ -8088,7 +8172,7 @@ export class AgentSession {
 	 */
 	async setModelTemporary(
 		model: Model,
-		thinkingLevel?: ThinkingLevel,
+		thinkingLevel?: ConfiguredThinkingLevel,
 		options?: { ephemeral?: boolean },
 	): Promise<void> {
 		const previousEditMode = this.#resolveActiveEditMode();
@@ -8158,7 +8242,6 @@ export class AgentSession {
 			const resolved = resolveModelRoleValue(roleModelStr, availableModels, {
 				settings: this.settings,
 				matchPreferences,
-				modelRegistry: this.#modelRegistry,
 			});
 			if (!resolved.model) continue;
 
@@ -8299,7 +8382,7 @@ export class AgentSession {
 		const all = this.#modelRegistry.getAvailable();
 		const patterns = this.settings.get("enabledModels");
 		if (!patterns || patterns.length === 0) return all;
-		return filterAvailableModelsByEnabledPatterns(all, patterns, this.#modelRegistry);
+		return filterAvailableModelsByEnabledPatterns(all, patterns);
 	}
 
 	// =========================================================================
@@ -10713,7 +10796,6 @@ export class AgentSession {
 		return resolveModelRoleValue(roleModelStr, availableModels, {
 			settings: this.settings,
 			matchPreferences: getModelMatchPreferences(this.settings),
-			modelRegistry: this.#modelRegistry,
 		});
 	}
 
@@ -12583,6 +12665,11 @@ export class AgentSession {
 		// Remove the failed assistant message from active context before retrying.
 		this.#removeAssistantMessageFromActiveContext(message);
 
+		// A thinking/response loop retried into identical context loops again. Inject a
+		// hidden redirect so the retried turn sees a directive to break the repeated
+		// pattern instead of re-sampling the same stalled reasoning.
+		this.#maybeInjectThinkingLoopRedirect(id);
+
 		// Wait with exponential backoff (abortable).
 		const retryAbortController = new AbortController();
 		this.#retryAbortController?.abort();
@@ -12614,6 +12701,35 @@ export class AgentSession {
 		this.#scheduleAgentContinue({ delayMs: 1, generation });
 
 		return true;
+	}
+
+	/**
+	 * Inject a hidden redirect notice when a thinking/response loop is being retried, so
+	 * the retried turn carries an instruction to break the repeated pattern instead of
+	 * re-sampling the same stalled context. Injected on every {@link AIError.Flag.ThinkingLoop}
+	 * retry (the failed assistant is dropped each attempt, so the notice does not accumulate
+	 * unboundedly). No-op unless `id` carries the ThinkingLoop flag and the loop guard is
+	 * enabled. The notice is generic on purpose — the detector's detail can quote raw model
+	 * text, which must not be interpolated into a higher-priority developer message.
+	 */
+	#maybeInjectThinkingLoopRedirect(id: number): void {
+		if (!AIError.is(id, AIError.Flag.ThinkingLoop)) return;
+		if (this.settings.get("model.loopGuard.enabled") !== true) return;
+		this.agent.appendMessage({
+			role: "custom",
+			customType: THINKING_LOOP_REDIRECT_TYPE,
+			content: thinkingLoopRedirectTemplate,
+			display: false,
+			attribution: "agent",
+			timestamp: Date.now(),
+		});
+		this.sessionManager.appendCustomMessageEntry(
+			THINKING_LOOP_REDIRECT_TYPE,
+			thinkingLoopRedirectTemplate,
+			false,
+			undefined,
+			"agent",
+		);
 	}
 
 	/**
