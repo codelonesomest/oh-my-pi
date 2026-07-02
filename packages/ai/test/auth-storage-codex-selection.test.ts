@@ -31,6 +31,7 @@ function createLimit(args: {
 	durationMs: number;
 	usedFraction: number;
 	resetInMs: number;
+	nowMs: number;
 }): UsageLimit {
 	const clamped = Math.min(Math.max(args.usedFraction, 0), 1);
 	const used = clamped * 100;
@@ -46,7 +47,7 @@ function createLimit(args: {
 			id: args.windowId,
 			label: args.windowLabel,
 			durationMs: args.durationMs,
-			resetsAt: Date.now() + args.resetInMs,
+			resetsAt: args.nowMs + args.resetInMs,
 		},
 		amount: {
 			unit: "percent",
@@ -66,12 +67,14 @@ function createCodexUsageReport(args: {
 	secondary: UsageWindowSpec;
 	primaryWindow?: UsageWindowConfig;
 	secondaryWindow?: UsageWindowConfig;
+	nowMs?: number;
 }): UsageReport {
 	const primaryWindow = args.primaryWindow ?? { windowId: "1h", windowLabel: "1 Hour", durationMs: HOUR_MS };
 	const secondaryWindow = args.secondaryWindow ?? { windowId: "7d", windowLabel: "7 Day", durationMs: WEEK_MS };
+	const nowMs = args.nowMs ?? Date.now();
 	return {
 		provider: "openai-codex",
-		fetchedAt: Date.now(),
+		fetchedAt: nowMs,
 		limits: [
 			createLimit({
 				key: "primary",
@@ -80,6 +83,7 @@ function createCodexUsageReport(args: {
 				durationMs: primaryWindow.durationMs,
 				usedFraction: args.primary.usedFraction,
 				resetInMs: args.primary.resetInMs,
+				nowMs,
 			}),
 			createLimit({
 				key: "secondary",
@@ -88,6 +92,7 @@ function createCodexUsageReport(args: {
 				durationMs: secondaryWindow.durationMs,
 				usedFraction: args.secondary.usedFraction,
 				resetInMs: args.secondary.resetInMs,
+				nowMs,
 			}),
 		],
 		metadata: { accountId: args.accountId },
@@ -606,6 +611,7 @@ function createClaudeLimit(args: {
 	durationMs: number;
 	usedFraction: number;
 	resetInMs: number;
+	nowMs: number;
 }): UsageLimit {
 	const clamped = Math.min(Math.max(args.usedFraction, 0), 1);
 	const used = clamped * 100;
@@ -622,7 +628,7 @@ function createClaudeLimit(args: {
 			id: args.key,
 			label,
 			durationMs: args.durationMs,
-			resetsAt: Date.now() + args.resetInMs,
+			resetsAt: args.nowMs + args.resetInMs,
 		},
 		amount: {
 			unit: "percent",
@@ -640,22 +646,26 @@ function createClaudeUsageReport(args: {
 	accountId: string;
 	primary: { usedFraction: number; resetInMs: number };
 	secondary: { usedFraction: number; resetInMs: number };
+	nowMs?: number;
 }): UsageReport {
+	const nowMs = args.nowMs ?? Date.now();
 	return {
 		provider: "anthropic",
-		fetchedAt: Date.now(),
+		fetchedAt: nowMs,
 		limits: [
 			createClaudeLimit({
 				key: "5h",
 				durationMs: FIVE_HOUR_MS,
 				usedFraction: args.primary.usedFraction,
 				resetInMs: args.primary.resetInMs,
+				nowMs,
 			}),
 			createClaudeLimit({
 				key: "7d",
 				durationMs: WEEK_MS,
 				usedFraction: args.secondary.usedFraction,
 				resetInMs: args.secondary.resetInMs,
+				nowMs,
 			}),
 		],
 		metadata: { accountId: args.accountId },
@@ -742,6 +752,7 @@ describe("AuthStorage claude oauth ranking", () => {
 			{ type: "oauth", ...createCredential("acct-b", "b@example.com") },
 		]);
 
+		const usageNowMs = Date.now();
 		for (const accountId of ["acct-a", "acct-b"]) {
 			usageByAccount.set(
 				accountId,
@@ -749,6 +760,7 @@ describe("AuthStorage claude oauth ranking", () => {
 					accountId,
 					primary: { usedFraction: 0.25, resetInMs: 4 * HOUR_MS },
 					secondary: { usedFraction: 0.25, resetInMs: 4 * 24 * HOUR_MS },
+					nowMs: usageNowMs,
 				}),
 			);
 		}
@@ -766,12 +778,14 @@ describe("AuthStorage claude oauth ranking", () => {
 			{ type: "oauth", ...createCredential("acct-base-b", "base-b@example.com") },
 		]);
 
+		const usageNowMs = Date.now();
 		usageByAccount.set(
 			"acct-best",
 			createClaudeUsageReport({
 				accountId: "acct-best",
 				primary: { usedFraction: 0.05, resetInMs: 4 * HOUR_MS },
 				secondary: { usedFraction: 0.05, resetInMs: 6 * 24 * HOUR_MS },
+				nowMs: usageNowMs,
 			}),
 		);
 		for (const accountId of ["acct-base-a", "acct-base-b"]) {
@@ -781,6 +795,7 @@ describe("AuthStorage claude oauth ranking", () => {
 					accountId,
 					primary: { usedFraction: 0.7, resetInMs: 2 * HOUR_MS },
 					secondary: { usedFraction: 0.7, resetInMs: 2 * 24 * HOUR_MS },
+					nowMs: usageNowMs,
 				}),
 			);
 		}
